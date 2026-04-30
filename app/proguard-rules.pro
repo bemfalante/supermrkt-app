@@ -1,0 +1,3 @@
+-keep class com.example.supermarketlist.data.local.entity.** { *; }
+-keep class com.example.supermarketlist.data.local.dao.** { *; }
+-keep class com.example.supermarketlist.data.local.database.** { *; }
