@@ -34,6 +34,12 @@ fun CameraScreen(viewModel: ShoppingViewModel, onNavigateBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
 
+    DisposableEffect(Unit) {
+        onDispose {
+            cameraExecutor.shutdown()
+        }
+    }
+
     var imageCapture: ImageCapture? by remember { mutableStateOf(null) }
     var processing by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf("Point at a product") }
