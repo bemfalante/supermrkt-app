@@ -11,15 +11,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.supermarketlist.data.local.entity.Category
 import com.example.supermarketlist.ui.screens.CameraScreen
+import com.example.supermarketlist.ui.screens.CategoryDropdown
 import com.example.supermarketlist.ui.screens.CategoryScreen
 import com.example.supermarketlist.ui.screens.MainScreen
 import com.example.supermarketlist.ui.screens.SettingsScreen
@@ -42,6 +47,10 @@ fun AppNavigation() {
     val navController = rememberNavController()
     val viewModel: ShoppingViewModel = viewModel()
     val context = LocalContext.current
+    val categories by viewModel.categories.collectAsState()
+
+    var showVoiceCategoryDialog by remember { mutableStateOf(false) }
+    var voiceDetectedItemName by remember { mutableStateOf("") }
 
     val voiceLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -49,12 +58,51 @@ fun AppNavigation() {
         if (result.resultCode == Activity.RESULT_OK) {
             val spokenText = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.get(0)
             if (!spokenText.isNullOrBlank()) {
-                val categories = viewModel.categories.value
-                if (categories.isNotEmpty()) {
-                    viewModel.addItem(spokenText, categories[0].id)
+                handleVoiceInput(spokenText, categories) { itemName, categoryId ->
+                    if (categoryId != null) {
+                        viewModel.addItem(itemName, categoryId)
+                    } else {
+                        voiceDetectedItemName = itemName
+                        showVoiceCategoryDialog = true
+                    }
                 }
             }
         }
+    }
+
+    if (showVoiceCategoryDialog) {
+        var selectedCategoryId by remember { mutableLongStateOf(categories.firstOrNull()?.id ?: -1L) }
+        AlertDialog(
+            onDismissRequest = { showVoiceCategoryDialog = false },
+            title = { Text("Add to List") },
+            text = {
+                Column {
+                    Text("Item: $voiceDetectedItemName")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Select Category:")
+                    CategoryDropdown(
+                        categories = categories,
+                        selectedCategoryId = selectedCategoryId,
+                        onCategorySelected = { selectedCategoryId = it }
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (selectedCategoryId != -1L) {
+                        viewModel.addItem(voiceDetectedItemName, selectedCategoryId)
+                        showVoiceCategoryDialog = false
+                    }
+                }) {
+                    Text("Add")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showVoiceCategoryDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
@@ -117,5 +165,33 @@ fun AppNavigation() {
                 onNavigateBack = { navController.popBackStack() }
             )
         }
+    }
+}
+
+private fun handleVoiceInput(
+    spokenText: String,
+    categories: List<Category>,
+    onResult: (String, Long?) -> Unit
+) {
+    // Basic logic to check if input matches "Add [item] to [category]"
+    val lowerText = spokenText.lowercase()
+    var handled = false
+
+    if (lowerText.startsWith("add ")) {
+        val parts = lowerText.substring(4).split(" to ")
+        if (parts.size == 2) {
+            val itemName = parts[0].trim()
+            val categoryName = parts[1].trim()
+
+            val category = categories.find { it.name.lowercase() == categoryName }
+            if (category != null) {
+                onResult(itemName, category.id)
+                handled = true
+            }
+        }
+    }
+
+    if (!handled) {
+        onResult(spokenText, null)
     }
 }
