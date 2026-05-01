@@ -45,6 +45,8 @@ fun CameraScreen(viewModel: ShoppingViewModel, onNavigateBack: () -> Unit) {
     var statusMessage by remember { mutableStateOf("Point at a product") }
 
     val categories by viewModel.categories.collectAsState()
+    var detectedProductName by remember { mutableStateOf<String?>(null) }
+    var showCategoryDialog by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
@@ -98,15 +100,56 @@ fun CameraScreen(viewModel: ShoppingViewModel, onNavigateBack: () -> Unit) {
                         context,
                         viewModel,
                         scope,
-                        onNavigateBack,
-                        { statusMessage = it },
-                        { processing = false }
+                        onDetected = { name ->
+                            detectedProductName = name
+                            showCategoryDialog = true
+                            processing = false
+                            statusMessage = "Product detected: $name"
+                        },
+                        setStatus = { statusMessage = it },
+                        onFinished = { processing = false }
                     )
                 },
                 enabled = !processing && categories.isNotEmpty()
             ) {
                 Text("Capture Product")
             }
+        }
+
+        if (showCategoryDialog && detectedProductName != null) {
+            var selectedCategoryId by remember { mutableLongStateOf(categories.firstOrNull()?.id ?: -1L) }
+
+            AlertDialog(
+                onDismissRequest = { showCategoryDialog = false },
+                title = { Text("Add to List") },
+                text = {
+                    Column {
+                        Text("Detected: $detectedProductName")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Select Category:")
+                        CategoryDropdown(
+                            categories = categories,
+                            selectedCategoryId = selectedCategoryId,
+                            onCategorySelected = { selectedCategoryId = it }
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (selectedCategoryId != -1L) {
+                            viewModel.addItem(detectedProductName!!, selectedCategoryId)
+                            onNavigateBack()
+                        }
+                    }) {
+                        Text("Add")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showCategoryDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 }
@@ -117,7 +160,7 @@ private fun captureAndProcess(
     context: android.content.Context,
     viewModel: ShoppingViewModel,
     scope: CoroutineScope,
-    onNavigateBack: () -> Unit,
+    onDetected: (String) -> Unit,
     setStatus: (String) -> Unit,
     onFinished: () -> Unit
 ) {
@@ -139,22 +182,16 @@ private fun captureAndProcess(
                 .addOnSuccessListener { visionText ->
                     val detectedText = visionText.text
                     if (detectedText.isNotBlank()) {
-                        // Found text! Add it
-                        val firstCategory = viewModel.categories.value.firstOrNull()
-                        if (firstCategory != null) {
-                            viewModel.addItem(detectedText.lines().first(), firstCategory.id)
-                            ContextCompat.getMainExecutor(context).execute { onNavigateBack() }
-                        } else {
-                            setStatus("No categories available")
-                            onFinished()
-                        }
+                        // Found text!
+                        val productName = detectedText.lines().first().trim()
+                        ContextCompat.getMainExecutor(context).execute { onDetected(productName) }
                     } else {
                         // 2. OCR failed, try Gemini
-                        processWithGemini(bitmap, context, viewModel, scope, onNavigateBack, setStatus, onFinished)
+                        processWithGemini(bitmap, context, viewModel, scope, onDetected, setStatus, onFinished)
                     }
                 }
                 .addOnFailureListener {
-                    processWithGemini(bitmap, context, viewModel, scope, onNavigateBack, setStatus, onFinished)
+                    processWithGemini(bitmap, context, viewModel, scope, onDetected, setStatus, onFinished)
                 }
         }
 
@@ -170,7 +207,7 @@ private fun processWithGemini(
     context: android.content.Context,
     viewModel: ShoppingViewModel,
     scope: CoroutineScope,
-    onNavigateBack: () -> Unit,
+    onDetected: (String) -> Unit,
     setStatus: (String) -> Unit,
     onFinished: () -> Unit
 ) {
@@ -199,19 +236,13 @@ private fun processWithGemini(
             val productName = response.text
 
             if (!productName.isNullOrBlank()) {
-                val firstCategory = viewModel.categories.value.firstOrNull()
-                if (firstCategory != null) {
-                    viewModel.addItem(productName.trim(), firstCategory.id)
-                    onNavigateBack()
-                } else {
-                    setStatus("No categories available")
-                }
+                onDetected(productName.trim())
             } else {
                 setStatus("Could not identify product")
+                onFinished()
             }
         } catch (e: Exception) {
             setStatus("Gemini Error: ${e.message}")
-        } finally {
             onFinished()
         }
     }

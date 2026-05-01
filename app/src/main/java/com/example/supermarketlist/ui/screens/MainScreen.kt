@@ -1,6 +1,7 @@
 package com.example.supermarketlist.ui.screens
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -30,6 +31,10 @@ fun MainScreen(
     var showAddItemDialog by remember { mutableStateOf(false) }
     var newItemName by remember { mutableStateOf("") }
     var selectedCategoryId by remember { mutableLongStateOf(-1L) }
+
+    var selectedItemForAction by remember { mutableStateOf<ShoppingItem?>(null) }
+    var showItemActionDialog by remember { mutableStateOf(false) }
+    var showEditItemDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -104,7 +109,10 @@ fun MainScreen(
                         ShoppingItemRow(
                             item = item,
                             onToggle = { viewModel.toggleItem(item) },
-                            onDelete = { viewModel.deleteItem(item) }
+                            onLongPress = {
+                                selectedItemForAction = item
+                                showItemActionDialog = true
+                            }
                         )
                     }
                 }
@@ -149,16 +157,101 @@ fun MainScreen(
                 }
             )
         }
+
+        if (showItemActionDialog && selectedItemForAction != null) {
+            AlertDialog(
+                onDismissRequest = { showItemActionDialog = false },
+                title = { Text(selectedItemForAction!!.name) },
+                text = {
+                    Column {
+                        TextButton(
+                            onClick = {
+                                showItemActionDialog = false
+                                showEditItemDialog = true
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                Icon(Icons.Default.Edit, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Edit")
+                            }
+                        }
+                        TextButton(
+                            onClick = {
+                                viewModel.deleteItem(selectedItemForAction!!)
+                                showItemActionDialog = false
+                                selectedItemForAction = null
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                Icon(Icons.Default.Delete, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Delete")
+                            }
+                        }
+                    }
+                },
+                confirmButton = {}
+            )
+        }
+
+        if (showEditItemDialog && selectedItemForAction != null) {
+            var editName by remember { mutableStateOf(selectedItemForAction!!.name) }
+            var editCategoryId by remember { mutableLongStateOf(selectedItemForAction!!.categoryId) }
+
+            AlertDialog(
+                onDismissRequest = { showEditItemDialog = false },
+                title = { Text("Edit Item") },
+                text = {
+                    Column {
+                        TextField(
+                            value = editName,
+                            onValueChange = { editName = it },
+                            label = { Text("Item Name") }
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Select Category:")
+                        CategoryDropdown(
+                            categories = categories,
+                            selectedCategoryId = editCategoryId,
+                            onCategorySelected = { editCategoryId = it }
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (editName.isNotBlank()) {
+                            viewModel.updateItem(selectedItemForAction!!.copy(name = editName, categoryId = editCategoryId))
+                            showEditItemDialog = false
+                            selectedItemForAction = null
+                        }
+                    }) {
+                        Text("Save")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showEditItemDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ShoppingItemRow(item: ShoppingItem, onToggle: () -> Unit, onDelete: () -> Unit) {
+fun ShoppingItemRow(item: ShoppingItem, onToggle: () -> Unit, onLongPress: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp)
-            .clickable { onToggle() },
+            .combinedClickable(
+                onClick = { onToggle() },
+                onLongClick = { onLongPress() }
+            ),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Checkbox(checked = item.isChecked, onCheckedChange = { onToggle() })
@@ -169,9 +262,6 @@ fun ShoppingItemRow(item: ShoppingItem, onToggle: () -> Unit, onDelete: () -> Un
                 textDecoration = if (item.isChecked) TextDecoration.LineThrough else TextDecoration.None
             )
         )
-        IconButton(onClick = onDelete) {
-            Icon(Icons.Default.Delete, contentDescription = "Delete")
-        }
     }
 }
 

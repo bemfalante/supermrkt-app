@@ -26,6 +26,12 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun updateItem(item: ShoppingItem) {
+        viewModelScope.launch {
+            dao.updateItem(item)
+        }
+    }
+
     fun toggleItem(item: ShoppingItem) {
         viewModelScope.launch {
             dao.updateItem(item.copy(isChecked = !item.isChecked))
