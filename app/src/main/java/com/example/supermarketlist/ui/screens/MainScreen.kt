@@ -23,7 +23,6 @@ fun MainScreen(
     viewModel: ShoppingViewModel,
     onNavigateToSettings: () -> Unit,
     onNavigateToCategories: () -> Unit,
-    onNavigateToCamera: () -> Unit,
     onStartVoiceInput: () -> Unit
 ) {
     val items by viewModel.items.collectAsState()
@@ -42,10 +41,10 @@ fun MainScreen(
                 title = { Text("Supermarket List") },
                 actions = {
                     IconButton(onClick = onNavigateToCategories) {
-                        Icon(Icons.Default.List, contentDescription = "Manage Categories")
+                        Icon(imageVector = Icons.Default.List, contentDescription = "Manage Categories")
                     }
                     IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        Icon(imageVector = Icons.Default.Settings, contentDescription = "Settings")
                     }
                 }
             )
@@ -53,21 +52,14 @@ fun MainScreen(
         floatingActionButton = {
             Column(horizontalAlignment = Alignment.End) {
                 SmallFloatingActionButton(
-                    onClick = onNavigateToCamera,
-                    containerColor = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                ) {
-                    Icon(Icons.Filled.AddAPhoto, contentDescription = "Add by Photo")
-                }
-                SmallFloatingActionButton(
                     onClick = onStartVoiceInput,
                     containerColor = MaterialTheme.colorScheme.secondary,
                     modifier = Modifier.padding(bottom = 8.dp)
                 ) {
-                    Icon(Icons.Filled.Mic, contentDescription = "Add by Voice")
+                    Icon(imageVector = Icons.Default.Menu, contentDescription = "Add by Voice")
                 }
                 FloatingActionButton(onClick = { showAddItemDialog = true }) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Item")
+                    Icon(imageVector = Icons.Default.Add, contentDescription = "Add Item")
                 }
             }
         }
@@ -172,7 +164,7 @@ fun MainScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                                Icon(Icons.Default.Edit, contentDescription = null)
+                                Icon(imageVector = Icons.Default.Edit, contentDescription = null)
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("Edit")
                             }
@@ -186,7 +178,7 @@ fun MainScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                                Icon(Icons.Default.Delete, contentDescription = null)
+                                Icon(imageVector = Icons.Default.Delete, contentDescription = null)
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("Delete")
                             }

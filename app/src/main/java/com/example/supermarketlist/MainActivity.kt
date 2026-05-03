@@ -23,7 +23,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.supermarketlist.data.local.entity.Category
-import com.example.supermarketlist.ui.screens.CameraScreen
 import com.example.supermarketlist.ui.screens.CategoryDropdown
 import com.example.supermarketlist.ui.screens.CategoryScreen
 import com.example.supermarketlist.ui.screens.MainScreen
@@ -71,7 +70,7 @@ fun AppNavigation() {
     }
 
     if (showVoiceCategoryDialog) {
-        var selectedCategoryId by remember { mutableLongStateOf(categories.firstOrNull()?.id ?: -1L) }
+        var selectedCategoryId by remember(voiceDetectedItemName) { mutableLongStateOf(categories.firstOrNull()?.id ?: -1L) }
         AlertDialog(
             onDismissRequest = { showVoiceCategoryDialog = false },
             title = { Text("Add to List") },
@@ -105,16 +104,6 @@ fun AppNavigation() {
         )
     }
 
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            navController.navigate("camera")
-        } else {
-            Toast.makeText(context, "Camera permission is required to take photos", Toast.LENGTH_SHORT).show()
-        }
-    }
-
     val audioPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -134,13 +123,6 @@ fun AppNavigation() {
                 viewModel = viewModel,
                 onNavigateToSettings = { navController.navigate("settings") },
                 onNavigateToCategories = { navController.navigate("categories") },
-                onNavigateToCamera = {
-                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                        navController.navigate("camera")
-                    } else {
-                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                    }
-                },
                 onStartVoiceInput = {
                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -159,12 +141,6 @@ fun AppNavigation() {
         composable("categories") {
             CategoryScreen(viewModel = viewModel, onNavigateBack = { navController.popBackStack() })
         }
-        composable("camera") {
-            CameraScreen(
-                viewModel = viewModel,
-                onNavigateBack = { navController.popBackStack() }
-            )
-        }
     }
 }
 
@@ -173,16 +149,16 @@ private fun handleVoiceInput(
     categories: List<Category>,
     onResult: (String, Long?) -> Unit
 ) {
-    // Basic logic to check if input matches "Add [item] to [category]"
-    val lowerText = spokenText.lowercase()
+    val lowerText = spokenText.lowercase().trim()
     var handled = false
 
+    // English: "add [item] to [category]"
     if (lowerText.startsWith("add ")) {
-        val parts = lowerText.substring(4).split(" to ")
+        val content = lowerText.substring(4)
+        val parts = content.split(" to ")
         if (parts.size == 2) {
             val itemName = parts[0].trim()
             val categoryName = parts[1].trim()
-
             val category = categories.find { it.name.lowercase() == categoryName }
             if (category != null) {
                 onResult(itemName, category.id)
@@ -191,7 +167,39 @@ private fun handleVoiceInput(
         }
     }
 
+    // Portuguese: "adicionar [item] em [categoria]" or "adicionar [item] na [categoria]" or "adicionar [item] no [categoria]"
+    // Or more specifically: "adicionar [item] na categoria [categoria]"
+    if (!handled && lowerText.startsWith("adicionar ")) {
+        val content = lowerText.substring(10)
+
+        val delimiters = listOf(" na categoria ", " no categoria ", " em categoria ", " na ", " no ", " em ")
+        for (delimiter in delimiters) {
+            if (content.contains(delimiter)) {
+                val parts = content.split(delimiter)
+                if (parts.size >= 2) {
+                    val itemName = parts[0].trim()
+                    val categoryName = parts[1].trim()
+                    val category = categories.find { it.name.lowercase() == categoryName }
+                    if (category != null) {
+                        onResult(itemName, category.id)
+                        handled = true
+                        break
+                    }
+                }
+            }
+        }
+    }
+
     if (!handled) {
-        onResult(spokenText, null)
+        // Fallback: If "adicionar" or "add" was used but category wasn't found,
+        // or if just the item name was spoken.
+        val cleanedText = if (lowerText.startsWith("add ")) {
+            lowerText.substring(4).trim()
+        } else if (lowerText.startsWith("adicionar ")) {
+            lowerText.substring(10).trim()
+        } else {
+            lowerText
+        }
+        onResult(cleanedText, null)
     }
 }
