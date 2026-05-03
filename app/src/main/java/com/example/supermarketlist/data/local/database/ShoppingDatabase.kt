@@ -8,7 +8,7 @@ import com.example.supermarketlist.data.local.dao.ShoppingDao
 import com.example.supermarketlist.data.local.entity.Category
 import com.example.supermarketlist.data.local.entity.ShoppingItem
 
-@Database(entities = [Category::class, ShoppingItem::class], version = 1, exportSchema = false)
+@Database(entities = [Category::class, ShoppingItem::class], version = 2, exportSchema = false)
 abstract class ShoppingDatabase : RoomDatabase() {
     abstract fun shoppingDao(): ShoppingDao
 
@@ -22,7 +22,9 @@ abstract class ShoppingDatabase : RoomDatabase() {
                     context.applicationContext,
                     ShoppingDatabase::class.java,
                     "shopping_database"
-                ).build()
+                )
+                .fallbackToDestructiveMigration()
+                .build()
                 INSTANCE = instance
                 instance
             }

@@ -23,10 +23,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.supermarketlist.data.local.entity.Category
-import com.example.supermarketlist.ui.screens.CategoryDropdown
 import com.example.supermarketlist.ui.screens.CategoryScreen
 import com.example.supermarketlist.ui.screens.MainScreen
-import com.example.supermarketlist.ui.screens.SettingsScreen
 import com.example.supermarketlist.ui.theme.SupermarketListTheme
 import com.example.supermarketlist.viewmodel.ShoppingViewModel
 
@@ -61,12 +59,6 @@ fun AppNavigation() {
                     if (categoryId != null) {
                         viewModel.addItem(itemName, categoryId)
                     } else {
-                        // For voice input, if category is not found, we can either:
-                        // 1. Add it to Uncategorized directly
-                        // 2. Ask user for category (current behavior)
-                        // The user said "Change the idea of having a category previously defined as a MUST. Make it an option for the user."
-                        // And "When the user tries to add an item without choosing category, ask if it is intentional."
-                        // So for voice, if they don't specify, we should probably ask.
                         voiceDetectedItemName = itemName
                         showVoiceCategoryDialog = true
                     }
@@ -78,6 +70,8 @@ fun AppNavigation() {
     if (showVoiceCategoryDialog) {
         var selectedCategoryId by remember(voiceDetectedItemName) { mutableStateOf<Long?>(null) }
         var showIntentionalConfirm by remember { mutableStateOf(false) }
+        var showNewCategoryDialog by remember { mutableStateOf(false) }
+        var newCategoryName by remember { mutableStateOf("") }
 
         if (showIntentionalConfirm) {
             AlertDialog(
@@ -111,7 +105,8 @@ fun AppNavigation() {
                         CategoryDropdownWithNone(
                             categories = categories,
                             selectedCategoryId = selectedCategoryId,
-                            onCategorySelected = { selectedCategoryId = it }
+                            onCategorySelected = { selectedCategoryId = it },
+                            onAddNewCategory = { showNewCategoryDialog = true }
                         )
                     }
                 },
@@ -129,6 +124,38 @@ fun AppNavigation() {
                 },
                 dismissButton = {
                     TextButton(onClick = { showVoiceCategoryDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        if (showNewCategoryDialog) {
+            AlertDialog(
+                onDismissRequest = { showNewCategoryDialog = false },
+                title = { Text("New Category") },
+                text = {
+                    TextField(
+                        value = newCategoryName,
+                        onValueChange = { newCategoryName = it },
+                        label = { Text("Category Name") }
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (newCategoryName.isNotBlank()) {
+                            viewModel.addCategory(newCategoryName) { newId ->
+                                selectedCategoryId = newId
+                            }
+                            newCategoryName = ""
+                            showNewCategoryDialog = false
+                        }
+                    }) {
+                        Text("Add")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showNewCategoryDialog = false }) {
                         Text("Cancel")
                     }
                 }
@@ -153,7 +180,6 @@ fun AppNavigation() {
         composable("main") {
             MainScreen(
                 viewModel = viewModel,
-                onNavigateToSettings = { navController.navigate("settings") },
                 onNavigateToCategories = { navController.navigate("categories") },
                 onStartVoiceInput = {
                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
@@ -167,9 +193,6 @@ fun AppNavigation() {
                 }
             )
         }
-        composable("settings") {
-            SettingsScreen(onNavigateBack = { navController.popBackStack() })
-        }
         composable("categories") {
             CategoryScreen(viewModel = viewModel, onNavigateBack = { navController.popBackStack() })
         }
@@ -180,7 +203,8 @@ fun AppNavigation() {
 fun CategoryDropdownWithNone(
     categories: List<Category>,
     selectedCategoryId: Long?,
-    onCategorySelected: (Long?) -> Unit
+    onCategorySelected: (Long?) -> Unit,
+    onAddNewCategory: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
     val selectedCategory = categories.find { it.id == selectedCategoryId }
@@ -206,6 +230,14 @@ fun CategoryDropdownWithNone(
                     }
                 )
             }
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("+ Create New Category", color = MaterialTheme.colorScheme.primary) },
+                onClick = {
+                    onAddNewCategory()
+                    expanded = false
+                }
+            )
         }
     }
 }

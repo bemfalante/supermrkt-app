@@ -1,6 +1,9 @@
 package com.example.supermarketlist.viewmodel
 
 import android.app.Application
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.supermarketlist.data.local.database.ShoppingDatabase
@@ -20,13 +23,18 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
     val items: StateFlow<List<ShoppingItem>> = dao.getAllItems()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    var lastUsedCategoryId by mutableStateOf<Long?>(null)
+        private set
+
     fun addItem(name: String, categoryId: Long?) {
+        lastUsedCategoryId = categoryId
         viewModelScope.launch {
             dao.insertItem(ShoppingItem(name = name, categoryId = categoryId))
         }
     }
 
     fun updateItem(item: ShoppingItem) {
+        lastUsedCategoryId = item.categoryId
         viewModelScope.launch {
             dao.updateItem(item)
         }
@@ -44,9 +52,10 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun addCategory(name: String) {
+    fun addCategory(name: String, onComplete: (Long) -> Unit = {}) {
         viewModelScope.launch {
-            dao.insertCategory(Category(name = name))
+            val id = dao.insertCategory(Category(name = name))
+            onComplete(id)
         }
     }
 

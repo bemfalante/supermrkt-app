@@ -12,6 +12,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
@@ -22,12 +24,12 @@ import com.example.supermarketlist.R
 import com.example.supermarketlist.data.local.entity.Category
 import com.example.supermarketlist.data.local.entity.ShoppingItem
 import com.example.supermarketlist.viewmodel.ShoppingViewModel
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     viewModel: ShoppingViewModel,
-    onNavigateToSettings: () -> Unit,
     onNavigateToCategories: () -> Unit,
     onStartVoiceInput: () -> Unit
 ) {
@@ -50,33 +52,33 @@ fun MainScreen(
                     IconButton(onClick = onNavigateToCategories) {
                         Icon(imageVector = Icons.AutoMirrored.Filled.List, contentDescription = "Manage Categories")
                     }
-                    IconButton(onClick = onNavigateToSettings) {
-                        Icon(imageVector = Icons.Default.Settings, contentDescription = "Settings")
-                    }
                 }
             )
         },
         floatingActionButton = {
-            Row(
+            Column(
                 modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+                horizontalAlignment = Alignment.End
             ) {
                 // Voice Button
-                LargeFloatingActionButton(
+                FloatingActionButton(
                     onClick = onStartVoiceInput,
                     containerColor = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.size(56.dp)
+                    modifier = Modifier.size(42.dp) // 75% of 56dp is 42dp
                 ) {
                     Icon(imageVector = ImageVector.vectorResource(id = R.drawable.ic_mic), contentDescription = "Add by Voice")
                 }
 
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Typing Button
-                LargeFloatingActionButton(
-                    onClick = { showAddItemDialog = true },
+                FloatingActionButton(
+                    onClick = {
+                        selectedCategoryId = viewModel.lastUsedCategoryId
+                        showAddItemDialog = true
+                    },
                     containerColor = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.size(56.dp)
+                    modifier = Modifier.size(42.dp) // 75% of 56dp is 42dp
                 ) {
                     Icon(imageVector = Icons.Default.Add, contentDescription = "Add Item")
                 }
@@ -145,7 +147,9 @@ fun MainScreen(
                         showAddItemDialog = false
                     }
                 },
-                onAddCategory = { viewModel.addCategory(it) }
+                onAddCategory = { name, onDone ->
+                    viewModel.addCategory(name, onDone)
+                }
             )
         }
 
@@ -224,7 +228,9 @@ fun MainScreen(
                     showEditItemDialog = false
                     selectedItemForAction = null
                 },
-                onAddCategory = { viewModel.addCategory(it) }
+                onAddCategory = { name, onDone ->
+                    viewModel.addCategory(name, onDone)
+                }
             )
         }
     }
@@ -273,7 +279,10 @@ fun WelcomeScreen(modifier: Modifier = Modifier, onManageCategories: () -> Unit)
             textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = onManageCategories) {
+        Button(
+            onClick = onManageCategories,
+            modifier = Modifier.fillMaxWidth(0.5f) // Half size
+        ) {
             Text("Manage Categories")
         }
     }
@@ -311,12 +320,13 @@ fun AddEditItemDialog(
     categories: List<Category>,
     onDismiss: () -> Unit,
     onConfirm: (String, Long?) -> Unit,
-    onAddCategory: (String) -> Unit
+    onAddCategory: (String, (Long) -> Unit) -> Unit
 ) {
     var name by remember { mutableStateOf(initialName) }
     var selectedCategoryId by remember { mutableStateOf(initialCategoryId) }
     var showNewCategoryDialog by remember { mutableStateOf(false) }
     var newCategoryName by remember { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -337,7 +347,8 @@ fun AddEditItemDialog(
                     categories = categories,
                     selectedCategoryId = selectedCategoryId,
                     onCategorySelected = { selectedCategoryId = it },
-                    onAddNewCategory = { showNewCategoryDialog = true }
+                    onAddNewCategory = { showNewCategoryDialog = true },
+                    lastUsedCategoryId = initialCategoryId
                 )
             }
         },
@@ -365,13 +376,16 @@ fun AddEditItemDialog(
                 TextField(
                     value = newCategoryName,
                     onValueChange = { newCategoryName = it },
-                    label = { Text("Category Name") }
+                    label = { Text("Category Name") },
+                    modifier = Modifier.focusRequester(focusRequester)
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
                     if (newCategoryName.isNotBlank()) {
-                        onAddCategory(newCategoryName)
+                        onAddCategory(newCategoryName) { newId ->
+                            selectedCategoryId = newId
+                        }
                         newCategoryName = ""
                         showNewCategoryDialog = false
                     }
@@ -385,6 +399,11 @@ fun AddEditItemDialog(
                 }
             }
         )
+
+        LaunchedEffect(Unit) {
+            delay(100)
+            focusRequester.requestFocus()
+        }
     }
 }
 
@@ -393,10 +412,19 @@ fun CategoryDropdownWithAdd(
     categories: List<Category>,
     selectedCategoryId: Long?,
     onCategorySelected: (Long?) -> Unit,
-    onAddNewCategory: () -> Unit
+    onAddNewCategory: () -> Unit,
+    lastUsedCategoryId: Long? = null
 ) {
     var expanded by remember { mutableStateOf(false) }
     val selectedCategory = categories.find { it.id == selectedCategoryId }
+
+    val sortedCategories = remember(categories, lastUsedCategoryId) {
+        categories.sortedWith { a, b ->
+            if (a.id == lastUsedCategoryId) -1
+            else if (b.id == lastUsedCategoryId) 1
+            else a.name.compareTo(b.name)
+        }
+    }
 
     Box {
         OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
@@ -410,7 +438,7 @@ fun CategoryDropdownWithAdd(
                     expanded = false
                 }
             )
-            categories.forEach { category ->
+            sortedCategories.forEach { category ->
                 DropdownMenuItem(
                     text = { Text(category.name) },
                     onClick = {
@@ -427,33 +455,6 @@ fun CategoryDropdownWithAdd(
                     expanded = false
                 }
             )
-        }
-    }
-}
-
-@Composable
-fun CategoryDropdown(
-    categories: List<Category>,
-    selectedCategoryId: Long,
-    onCategorySelected: (Long) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val selectedCategory = categories.find { it.id == selectedCategoryId }
-
-    Box {
-        OutlinedButton(onClick = { expanded = true }) {
-            Text(selectedCategory?.name ?: "Select Category")
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            categories.forEach { category ->
-                DropdownMenuItem(
-                    text = { Text(category.name) },
-                    onClick = {
-                        onCategorySelected(category.id)
-                        expanded = false
-                    }
-                )
-            }
         }
     }
 }
