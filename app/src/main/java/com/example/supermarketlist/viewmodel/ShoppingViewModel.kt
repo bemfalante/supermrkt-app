@@ -20,7 +20,7 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
     val items: StateFlow<List<ShoppingItem>> = dao.getAllItems()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun addItem(name: String, categoryId: Long) {
+    fun addItem(name: String, categoryId: Long?) {
         viewModelScope.launch {
             dao.insertItem(ShoppingItem(name = name, categoryId = categoryId))
         }

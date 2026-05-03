@@ -6,13 +6,19 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import com.example.supermarketlist.R
 import com.example.supermarketlist.data.local.entity.Category
 import com.example.supermarketlist.data.local.entity.ShoppingItem
 import com.example.supermarketlist.viewmodel.ShoppingViewModel
@@ -29,19 +35,20 @@ fun MainScreen(
     val categories by viewModel.categories.collectAsState()
     var showAddItemDialog by remember { mutableStateOf(false) }
     var newItemName by remember { mutableStateOf("") }
-    var selectedCategoryId by remember { mutableLongStateOf(-1L) }
+    var selectedCategoryId by remember { mutableStateOf<Long?>(null) }
 
     var selectedItemForAction by remember { mutableStateOf<ShoppingItem?>(null) }
     var showItemActionDialog by remember { mutableStateOf(false) }
     var showEditItemDialog by remember { mutableStateOf(false) }
+    var showUncategorizedConfirmDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Supermarket List") },
+                title = { Text("Market List") },
                 actions = {
                     IconButton(onClick = onNavigateToCategories) {
-                        Icon(imageVector = Icons.Default.List, contentDescription = "Manage Categories")
+                        Icon(imageVector = Icons.AutoMirrored.Filled.List, contentDescription = "Manage Categories")
                     }
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(imageVector = Icons.Default.Settings, contentDescription = "Settings")
@@ -50,41 +57,49 @@ fun MainScreen(
             )
         },
         floatingActionButton = {
-            Column(horizontalAlignment = Alignment.End) {
-                SmallFloatingActionButton(
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Voice Button
+                LargeFloatingActionButton(
                     onClick = onStartVoiceInput,
                     containerColor = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    modifier = Modifier.size(56.dp)
                 ) {
-                    Icon(imageVector = Icons.Default.Menu, contentDescription = "Add by Voice")
+                    Icon(imageVector = ImageVector.vectorResource(id = R.drawable.ic_mic), contentDescription = "Add by Voice")
                 }
-                FloatingActionButton(onClick = { showAddItemDialog = true }) {
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                // Typing Button
+                LargeFloatingActionButton(
+                    onClick = { showAddItemDialog = true },
+                    containerColor = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.size(56.dp)
+                ) {
                     Icon(imageVector = Icons.Default.Add, contentDescription = "Add Item")
                 }
             }
         }
     ) { padding ->
-        if (categories.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Please create a category first", style = MaterialTheme.typography.bodyLarge)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = onNavigateToCategories) {
-                        Text("Manage Categories")
-                    }
-                }
-            }
-        } else if (items.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("Your list is empty", style = MaterialTheme.typography.bodyLarge)
-            }
+        if (items.isEmpty()) {
+            WelcomeScreen(modifier = Modifier.padding(padding), onManageCategories = onNavigateToCategories)
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
                 val grouped = items.groupBy { item ->
-                    categories.find { it.id == item.categoryId }?.name ?: "Uncategorized"
+                    if (item.categoryId == null) "Uncategorized"
+                    else categories.find { it.id == item.categoryId }?.name ?: "Uncategorized"
                 }
 
-                grouped.forEach { (categoryName, categoryItems) ->
+                val sortedCategoryNames = grouped.keys.sortedWith { a, b ->
+                    if (a == "Uncategorized") 1 else if (b == "Uncategorized") -1 else a.compareTo(b)
+                }
+
+                sortedCategoryNames.forEach { categoryName ->
+                    val categoryItems = grouped[categoryName] ?: emptyList()
+                    val sortedItems = categoryItems.sortedBy { it.isChecked }
+
                     item {
                         Surface(
                             color = MaterialTheme.colorScheme.surfaceVariant,
@@ -97,7 +112,7 @@ fun MainScreen(
                             )
                         }
                     }
-                    items(categoryItems) { item ->
+                    items(sortedItems, key = { it.id }) { item ->
                         ShoppingItemRow(
                             item = item,
                             onToggle = { viewModel.toggleItem(item) },
@@ -112,39 +127,47 @@ fun MainScreen(
         }
 
         if (showAddItemDialog) {
-            AlertDialog(
-                onDismissRequest = { showAddItemDialog = false },
-                title = { Text("Add Item") },
-                text = {
-                    Column {
-                        TextField(
-                            value = newItemName,
-                            onValueChange = { newItemName = it },
-                            label = { Text("Item Name") }
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Select Category:")
-                        CategoryDropdown(
-                            categories = categories,
-                            selectedCategoryId = selectedCategoryId,
-                            onCategorySelected = { selectedCategoryId = it }
-                        )
+            AddEditItemDialog(
+                title = "Add Item",
+                initialName = newItemName,
+                initialCategoryId = selectedCategoryId,
+                categories = categories,
+                onDismiss = { showAddItemDialog = false },
+                onConfirm = { name, catId ->
+                    newItemName = name
+                    selectedCategoryId = catId
+                    if (catId == null) {
+                        showUncategorizedConfirmDialog = true
+                    } else {
+                        viewModel.addItem(name, catId)
+                        newItemName = ""
+                        selectedCategoryId = null
+                        showAddItemDialog = false
                     }
                 },
+                onAddCategory = { viewModel.addCategory(it) }
+            )
+        }
+
+        if (showUncategorizedConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showUncategorizedConfirmDialog = false },
+                title = { Text("No Category Selected") },
+                text = { Text("Are you sure you want to add this item to the Uncategorized list?") },
                 confirmButton = {
                     TextButton(onClick = {
-                        if (newItemName.isNotBlank() && selectedCategoryId != -1L) {
-                            viewModel.addItem(newItemName, selectedCategoryId)
-                            newItemName = ""
-                            showAddItemDialog = false
-                        }
+                        viewModel.addItem(newItemName, null)
+                        newItemName = ""
+                        selectedCategoryId = null
+                        showUncategorizedConfirmDialog = false
+                        showAddItemDialog = false
                     }) {
-                        Text("Add")
+                        Text("Yes")
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showAddItemDialog = false }) {
-                        Text("Cancel")
+                    TextButton(onClick = { showUncategorizedConfirmDialog = false }) {
+                        Text("No")
                     }
                 }
             )
@@ -190,45 +213,68 @@ fun MainScreen(
         }
 
         if (showEditItemDialog && selectedItemForAction != null) {
-            var editName by remember { mutableStateOf(selectedItemForAction!!.name) }
-            var editCategoryId by remember { mutableLongStateOf(selectedItemForAction!!.categoryId) }
-
-            AlertDialog(
-                onDismissRequest = { showEditItemDialog = false },
-                title = { Text("Edit Item") },
-                text = {
-                    Column {
-                        TextField(
-                            value = editName,
-                            onValueChange = { editName = it },
-                            label = { Text("Item Name") }
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Select Category:")
-                        CategoryDropdown(
-                            categories = categories,
-                            selectedCategoryId = editCategoryId,
-                            onCategorySelected = { editCategoryId = it }
-                        )
-                    }
+            AddEditItemDialog(
+                title = "Edit Item",
+                initialName = selectedItemForAction!!.name,
+                initialCategoryId = selectedItemForAction!!.categoryId,
+                categories = categories,
+                onDismiss = { showEditItemDialog = false },
+                onConfirm = { name, catId ->
+                    viewModel.updateItem(selectedItemForAction!!.copy(name = name, categoryId = catId))
+                    showEditItemDialog = false
+                    selectedItemForAction = null
                 },
-                confirmButton = {
-                    TextButton(onClick = {
-                        if (editName.isNotBlank()) {
-                            viewModel.updateItem(selectedItemForAction!!.copy(name = editName, categoryId = editCategoryId))
-                            showEditItemDialog = false
-                            selectedItemForAction = null
-                        }
-                    }) {
-                        Text("Save")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showEditItemDialog = false }) {
-                        Text("Cancel")
-                    }
-                }
+                onAddCategory = { viewModel.addCategory(it) }
             )
+        }
+    }
+}
+
+@Composable
+fun WelcomeScreen(modifier: Modifier = Modifier, onManageCategories: () -> Unit) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = "Welcome to Market List!",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = "Start building your list by adding items in two ways:",
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Type the item name manually", style = MaterialTheme.typography.bodyMedium)
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(imageVector = ImageVector.vectorResource(id = R.drawable.ic_mic), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Use your voice to add items quickly", style = MaterialTheme.typography.bodyMedium)
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+        Text(
+            text = "You can also organize your items into categories to make shopping easier.",
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(onClick = onManageCategories) {
+            Text("Manage Categories")
         }
     }
 }
@@ -254,6 +300,134 @@ fun ShoppingItemRow(item: ShoppingItem, onToggle: () -> Unit, onLongPress: () ->
                 textDecoration = if (item.isChecked) TextDecoration.LineThrough else TextDecoration.None
             )
         )
+    }
+}
+
+@Composable
+fun AddEditItemDialog(
+    title: String,
+    initialName: String,
+    initialCategoryId: Long?,
+    categories: List<Category>,
+    onDismiss: () -> Unit,
+    onConfirm: (String, Long?) -> Unit,
+    onAddCategory: (String) -> Unit
+) {
+    var name by remember { mutableStateOf(initialName) }
+    var selectedCategoryId by remember { mutableStateOf(initialCategoryId) }
+    var showNewCategoryDialog by remember { mutableStateOf(false) }
+    var newCategoryName by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                TextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Item Name") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Category (Optional):", style = MaterialTheme.typography.bodyMedium)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                CategoryDropdownWithAdd(
+                    categories = categories,
+                    selectedCategoryId = selectedCategoryId,
+                    onCategorySelected = { selectedCategoryId = it },
+                    onAddNewCategory = { showNewCategoryDialog = true }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (name.isNotBlank()) {
+                    onConfirm(name, selectedCategoryId)
+                }
+            }) {
+                Text("Confirm")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+
+    if (showNewCategoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showNewCategoryDialog = false },
+            title = { Text("New Category") },
+            text = {
+                TextField(
+                    value = newCategoryName,
+                    onValueChange = { newCategoryName = it },
+                    label = { Text("Category Name") }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (newCategoryName.isNotBlank()) {
+                        onAddCategory(newCategoryName)
+                        newCategoryName = ""
+                        showNewCategoryDialog = false
+                    }
+                }) {
+                    Text("Add")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNewCategoryDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun CategoryDropdownWithAdd(
+    categories: List<Category>,
+    selectedCategoryId: Long?,
+    onCategorySelected: (Long?) -> Unit,
+    onAddNewCategory: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedCategory = categories.find { it.id == selectedCategoryId }
+
+    Box {
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
+            Text(selectedCategory?.name ?: "No Category")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text("None") },
+                onClick = {
+                    onCategorySelected(null)
+                    expanded = false
+                }
+            )
+            categories.forEach { category ->
+                DropdownMenuItem(
+                    text = { Text(category.name) },
+                    onClick = {
+                        onCategorySelected(category.id)
+                        expanded = false
+                    }
+                )
+            }
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("+ Create New Category", color = MaterialTheme.colorScheme.primary) },
+                onClick = {
+                    onAddNewCategory()
+                    expanded = false
+                }
+            )
+        }
     }
 }
 

@@ -61,6 +61,12 @@ fun AppNavigation() {
                     if (categoryId != null) {
                         viewModel.addItem(itemName, categoryId)
                     } else {
+                        // For voice input, if category is not found, we can either:
+                        // 1. Add it to Uncategorized directly
+                        // 2. Ask user for category (current behavior)
+                        // The user said "Change the idea of having a category previously defined as a MUST. Make it an option for the user."
+                        // And "When the user tries to add an item without choosing category, ask if it is intentional."
+                        // So for voice, if they don't specify, we should probably ask.
                         voiceDetectedItemName = itemName
                         showVoiceCategoryDialog = true
                     }
@@ -70,38 +76,64 @@ fun AppNavigation() {
     }
 
     if (showVoiceCategoryDialog) {
-        var selectedCategoryId by remember(voiceDetectedItemName) { mutableLongStateOf(categories.firstOrNull()?.id ?: -1L) }
-        AlertDialog(
-            onDismissRequest = { showVoiceCategoryDialog = false },
-            title = { Text("Add to List") },
-            text = {
-                Column {
-                    Text("Item: $voiceDetectedItemName")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Select Category:")
-                    CategoryDropdown(
-                        categories = categories,
-                        selectedCategoryId = selectedCategoryId,
-                        onCategorySelected = { selectedCategoryId = it }
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (selectedCategoryId != -1L) {
-                        viewModel.addItem(voiceDetectedItemName, selectedCategoryId)
+        var selectedCategoryId by remember(voiceDetectedItemName) { mutableStateOf<Long?>(null) }
+        var showIntentionalConfirm by remember { mutableStateOf(false) }
+
+        if (showIntentionalConfirm) {
+            AlertDialog(
+                onDismissRequest = { showIntentionalConfirm = false },
+                title = { Text("No Category Selected") },
+                text = { Text("Are you sure you want to add '$voiceDetectedItemName' to the Uncategorized list?") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.addItem(voiceDetectedItemName, null)
                         showVoiceCategoryDialog = false
+                        showIntentionalConfirm = false
+                    }) {
+                        Text("Yes")
                     }
-                }) {
-                    Text("Add")
+                },
+                dismissButton = {
+                    TextButton(onClick = { showIntentionalConfirm = false }) {
+                        Text("No")
+                    }
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showVoiceCategoryDialog = false }) {
-                    Text("Cancel")
+            )
+        } else {
+            AlertDialog(
+                onDismissRequest = { showVoiceCategoryDialog = false },
+                title = { Text("Add to List") },
+                text = {
+                    Column {
+                        Text("Item: $voiceDetectedItemName")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Select Category (Optional):")
+                        CategoryDropdownWithNone(
+                            categories = categories,
+                            selectedCategoryId = selectedCategoryId,
+                            onCategorySelected = { selectedCategoryId = it }
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (selectedCategoryId != null) {
+                            viewModel.addItem(voiceDetectedItemName, selectedCategoryId)
+                            showVoiceCategoryDialog = false
+                        } else {
+                            showIntentionalConfirm = true
+                        }
+                    }) {
+                        Text("Add")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showVoiceCategoryDialog = false }) {
+                        Text("Cancel")
+                    }
                 }
-            }
-        )
+            )
+        }
     }
 
     val audioPermissionLauncher = rememberLauncherForActivityResult(
@@ -140,6 +172,40 @@ fun AppNavigation() {
         }
         composable("categories") {
             CategoryScreen(viewModel = viewModel, onNavigateBack = { navController.popBackStack() })
+        }
+    }
+}
+
+@Composable
+fun CategoryDropdownWithNone(
+    categories: List<Category>,
+    selectedCategoryId: Long?,
+    onCategorySelected: (Long?) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedCategory = categories.find { it.id == selectedCategoryId }
+
+    Box {
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
+            Text(selectedCategory?.name ?: "No Category")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text("None") },
+                onClick = {
+                    onCategorySelected(null)
+                    expanded = false
+                }
+            )
+            categories.forEach { category ->
+                DropdownMenuItem(
+                    text = { Text(category.name) },
+                    onClick = {
+                        onCategorySelected(category.id)
+                        expanded = false
+                    }
+                )
+            }
         }
     }
 }
