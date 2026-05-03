@@ -13,6 +13,6 @@ data class Category(
 data class ShoppingItem(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
-    val categoryId: Long,
+    val categoryId: Long?,
     val isChecked: Boolean = false
 )

@@ -23,7 +23,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.supermarketlist.data.local.entity.Category
-import com.example.supermarketlist.ui.screens.CameraScreen
 import com.example.supermarketlist.ui.screens.CategoryDropdown
 import com.example.supermarketlist.ui.screens.CategoryScreen
 import com.example.supermarketlist.ui.screens.MainScreen
@@ -62,6 +61,12 @@ fun AppNavigation() {
                     if (categoryId != null) {
                         viewModel.addItem(itemName, categoryId)
                     } else {
+                        // For voice input, if category is not found, we can either:
+                        // 1. Add it to Uncategorized directly
+                        // 2. Ask user for category (current behavior)
+                        // The user said "Change the idea of having a category previously defined as a MUST. Make it an option for the user."
+                        // And "When the user tries to add an item without choosing category, ask if it is intentional."
+                        // So for voice, if they don't specify, we should probably ask.
                         voiceDetectedItemName = itemName
                         showVoiceCategoryDialog = true
                     }
@@ -71,47 +76,63 @@ fun AppNavigation() {
     }
 
     if (showVoiceCategoryDialog) {
-        var selectedCategoryId by remember { mutableLongStateOf(categories.firstOrNull()?.id ?: -1L) }
-        AlertDialog(
-            onDismissRequest = { showVoiceCategoryDialog = false },
-            title = { Text("Add to List") },
-            text = {
-                Column {
-                    Text("Item: $voiceDetectedItemName")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Select Category:")
-                    CategoryDropdown(
-                        categories = categories,
-                        selectedCategoryId = selectedCategoryId,
-                        onCategorySelected = { selectedCategoryId = it }
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (selectedCategoryId != -1L) {
-                        viewModel.addItem(voiceDetectedItemName, selectedCategoryId)
-                        showVoiceCategoryDialog = false
-                    }
-                }) {
-                    Text("Add")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showVoiceCategoryDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
+        var selectedCategoryId by remember(voiceDetectedItemName) { mutableStateOf<Long?>(null) }
+        var showIntentionalConfirm by remember { mutableStateOf(false) }
 
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            navController.navigate("camera")
+        if (showIntentionalConfirm) {
+            AlertDialog(
+                onDismissRequest = { showIntentionalConfirm = false },
+                title = { Text("No Category Selected") },
+                text = { Text("Are you sure you want to add '$voiceDetectedItemName' to the Uncategorized list?") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.addItem(voiceDetectedItemName, null)
+                        showVoiceCategoryDialog = false
+                        showIntentionalConfirm = false
+                    }) {
+                        Text("Yes")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showIntentionalConfirm = false }) {
+                        Text("No")
+                    }
+                }
+            )
         } else {
-            Toast.makeText(context, "Camera permission is required to take photos", Toast.LENGTH_SHORT).show()
+            AlertDialog(
+                onDismissRequest = { showVoiceCategoryDialog = false },
+                title = { Text("Add to List") },
+                text = {
+                    Column {
+                        Text("Item: $voiceDetectedItemName")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Select Category (Optional):")
+                        CategoryDropdownWithNone(
+                            categories = categories,
+                            selectedCategoryId = selectedCategoryId,
+                            onCategorySelected = { selectedCategoryId = it }
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (selectedCategoryId != null) {
+                            viewModel.addItem(voiceDetectedItemName, selectedCategoryId)
+                            showVoiceCategoryDialog = false
+                        } else {
+                            showIntentionalConfirm = true
+                        }
+                    }) {
+                        Text("Add")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showVoiceCategoryDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 
@@ -134,13 +155,6 @@ fun AppNavigation() {
                 viewModel = viewModel,
                 onNavigateToSettings = { navController.navigate("settings") },
                 onNavigateToCategories = { navController.navigate("categories") },
-                onNavigateToCamera = {
-                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                        navController.navigate("camera")
-                    } else {
-                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                    }
-                },
                 onStartVoiceInput = {
                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -159,11 +173,39 @@ fun AppNavigation() {
         composable("categories") {
             CategoryScreen(viewModel = viewModel, onNavigateBack = { navController.popBackStack() })
         }
-        composable("camera") {
-            CameraScreen(
-                viewModel = viewModel,
-                onNavigateBack = { navController.popBackStack() }
+    }
+}
+
+@Composable
+fun CategoryDropdownWithNone(
+    categories: List<Category>,
+    selectedCategoryId: Long?,
+    onCategorySelected: (Long?) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedCategory = categories.find { it.id == selectedCategoryId }
+
+    Box {
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
+            Text(selectedCategory?.name ?: "No Category")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text("None") },
+                onClick = {
+                    onCategorySelected(null)
+                    expanded = false
+                }
             )
+            categories.forEach { category ->
+                DropdownMenuItem(
+                    text = { Text(category.name) },
+                    onClick = {
+                        onCategorySelected(category.id)
+                        expanded = false
+                    }
+                )
+            }
         }
     }
 }
@@ -173,16 +215,16 @@ private fun handleVoiceInput(
     categories: List<Category>,
     onResult: (String, Long?) -> Unit
 ) {
-    // Basic logic to check if input matches "Add [item] to [category]"
-    val lowerText = spokenText.lowercase()
+    val lowerText = spokenText.lowercase().trim()
     var handled = false
 
+    // English: "add [item] to [category]"
     if (lowerText.startsWith("add ")) {
-        val parts = lowerText.substring(4).split(" to ")
+        val content = lowerText.substring(4)
+        val parts = content.split(" to ")
         if (parts.size == 2) {
             val itemName = parts[0].trim()
             val categoryName = parts[1].trim()
-
             val category = categories.find { it.name.lowercase() == categoryName }
             if (category != null) {
                 onResult(itemName, category.id)
@@ -191,7 +233,39 @@ private fun handleVoiceInput(
         }
     }
 
+    // Portuguese: "adicionar [item] em [categoria]" or "adicionar [item] na [categoria]" or "adicionar [item] no [categoria]"
+    // Or more specifically: "adicionar [item] na categoria [categoria]"
+    if (!handled && lowerText.startsWith("adicionar ")) {
+        val content = lowerText.substring(10)
+
+        val delimiters = listOf(" na categoria ", " no categoria ", " em categoria ", " na ", " no ", " em ")
+        for (delimiter in delimiters) {
+            if (content.contains(delimiter)) {
+                val parts = content.split(delimiter)
+                if (parts.size >= 2) {
+                    val itemName = parts[0].trim()
+                    val categoryName = parts[1].trim()
+                    val category = categories.find { it.name.lowercase() == categoryName }
+                    if (category != null) {
+                        onResult(itemName, category.id)
+                        handled = true
+                        break
+                    }
+                }
+            }
+        }
+    }
+
     if (!handled) {
-        onResult(spokenText, null)
+        // Fallback: If "adicionar" or "add" was used but category wasn't found,
+        // or if just the item name was spoken.
+        val cleanedText = if (lowerText.startsWith("add ")) {
+            lowerText.substring(4).trim()
+        } else if (lowerText.startsWith("adicionar ")) {
+            lowerText.substring(10).trim()
+        } else {
+            lowerText
+        }
+        onResult(cleanedText, null)
     }
 }
