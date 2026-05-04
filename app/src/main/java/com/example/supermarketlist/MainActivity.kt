@@ -19,12 +19,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.example.supermarketlist.data.local.entity.Category
 import com.example.supermarketlist.ui.screens.CategoryScreen
+import com.example.supermarketlist.ui.screens.HistoryScreen
 import com.example.supermarketlist.ui.screens.MainScreen
+import com.example.supermarketlist.ui.screens.ShoppingScreen
 import com.example.supermarketlist.ui.theme.SupermarketListTheme
 import com.example.supermarketlist.viewmodel.ShoppingViewModel
 
@@ -68,7 +72,7 @@ fun AppNavigation() {
     }
 
     if (showVoiceCategoryDialog) {
-        var selectedCategoryId by remember(voiceDetectedItemName) { mutableStateOf<Long?>(null) }
+        var selectedCategoryId by remember(voiceDetectedItemName) { mutableStateOf<Long?>(viewModel.lastUsedCategoryId) }
         var showIntentionalConfirm by remember { mutableStateOf(false) }
         var showNewCategoryDialog by remember { mutableStateOf(false) }
         var newCategoryName by remember { mutableStateOf("") }
@@ -181,6 +185,10 @@ fun AppNavigation() {
             MainScreen(
                 viewModel = viewModel,
                 onNavigateToCategories = { navController.navigate("categories") },
+                onNavigateToHistory = { navController.navigate("history") },
+                onStartShopping = { catId ->
+                    navController.navigate("shopping/${catId ?: -1L}")
+                },
                 onStartVoiceInput = {
                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -195,6 +203,21 @@ fun AppNavigation() {
         }
         composable("categories") {
             CategoryScreen(viewModel = viewModel, onNavigateBack = { navController.popBackStack() })
+        }
+        composable("history") {
+            HistoryScreen(viewModel = viewModel, onNavigateBack = { navController.popBackStack() })
+        }
+        composable(
+            "shopping/{categoryId}",
+            arguments = listOf(navArgument("categoryId") { type = NavType.LongType })
+        ) { backStackEntry ->
+            val categoryId = backStackEntry.arguments?.getLong("categoryId")
+            ShoppingScreen(
+                viewModel = viewModel,
+                categoryId = if (categoryId == -1L) null else categoryId,
+                onFinished = { navController.popBackStack("main", false) },
+                onNavigateBack = { navController.popBackStack() }
+            )
         }
     }
 }

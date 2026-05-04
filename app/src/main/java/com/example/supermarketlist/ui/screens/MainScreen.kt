@@ -5,6 +5,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.*
@@ -14,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
@@ -31,6 +33,8 @@ import kotlinx.coroutines.delay
 fun MainScreen(
     viewModel: ShoppingViewModel,
     onNavigateToCategories: () -> Unit,
+    onNavigateToHistory: () -> Unit,
+    onStartShopping: (Long?) -> Unit,
     onStartVoiceInput: () -> Unit
 ) {
     val items by viewModel.items.collectAsState()
@@ -43,14 +47,32 @@ fun MainScreen(
     var showItemActionDialog by remember { mutableStateOf(false) }
     var showEditItemDialog by remember { mutableStateOf(false) }
     var showUncategorizedConfirmDialog by remember { mutableStateOf(false) }
+    var showStartShoppingCategoryDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Market List") },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Market List")
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = { showStartShoppingCategoryDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Text("Shopping!", style = MaterialTheme.typography.labelMedium, color = Color.White)
+                        }
+                    }
+                },
                 actions = {
                     IconButton(onClick = onNavigateToCategories) {
                         Icon(imageVector = Icons.AutoMirrored.Filled.List, contentDescription = "Manage Categories")
+                    }
+                    IconButton(onClick = onNavigateToHistory) {
+                        Icon(imageVector = Icons.Default.ShoppingCart, contentDescription = "History")
                     }
                 }
             )
@@ -64,7 +86,7 @@ fun MainScreen(
                 FloatingActionButton(
                     onClick = onStartVoiceInput,
                     containerColor = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.size(42.dp) // 75% of 56dp is 42dp
+                    modifier = Modifier.size(42.dp)
                 ) {
                     Icon(imageVector = ImageVector.vectorResource(id = R.drawable.ic_mic), contentDescription = "Add by Voice")
                 }
@@ -78,7 +100,7 @@ fun MainScreen(
                         showAddItemDialog = true
                     },
                     containerColor = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.size(42.dp) // 75% of 56dp is 42dp
+                    modifier = Modifier.size(42.dp)
                 ) {
                     Icon(imageVector = Icons.Default.Add, contentDescription = "Add Item")
                 }
@@ -233,6 +255,36 @@ fun MainScreen(
                 }
             )
         }
+
+        if (showStartShoppingCategoryDialog) {
+            var selectedCatId by remember { mutableStateOf<Long?>(null) }
+            AlertDialog(
+                onDismissRequest = { showStartShoppingCategoryDialog = false },
+                title = { Text("Select Category to Shop") },
+                text = {
+                    CategoryDropdownWithAdd(
+                        categories = categories,
+                        selectedCategoryId = selectedCatId,
+                        onCategorySelected = { selectedCatId = it },
+                        onAddNewCategory = {}, // Not needed here
+                        lastUsedCategoryId = null
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        onStartShopping(selectedCatId)
+                        showStartShoppingCategoryDialog = false
+                    }) {
+                        Text("Start")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showStartShoppingCategoryDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -281,7 +333,7 @@ fun WelcomeScreen(modifier: Modifier = Modifier, onManageCategories: () -> Unit)
         Spacer(modifier = Modifier.height(16.dp))
         Button(
             onClick = onManageCategories,
-            modifier = Modifier.fillMaxWidth(0.5f) // Half size
+            modifier = Modifier.fillMaxWidth(0.5f)
         ) {
             Text("Manage Categories")
         }
@@ -326,19 +378,25 @@ fun AddEditItemDialog(
     var selectedCategoryId by remember { mutableStateOf(initialCategoryId) }
     var showNewCategoryDialog by remember { mutableStateOf(false) }
     var newCategoryName by remember { mutableStateOf("") }
-    val focusRequester = remember { FocusRequester() }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
             Column {
+                val nameFocusRequester = remember { FocusRequester() }
                 TextField(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Item Name") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().focusRequester(nameFocusRequester)
                 )
+
+                LaunchedEffect(Unit) {
+                    delay(100)
+                    nameFocusRequester.requestFocus()
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
                 Text("Category (Optional):", style = MaterialTheme.typography.bodyMedium)
                 Spacer(modifier = Modifier.height(8.dp))
@@ -369,6 +427,7 @@ fun AddEditItemDialog(
     )
 
     if (showNewCategoryDialog) {
+        val catFocusRequester = remember { FocusRequester() }
         AlertDialog(
             onDismissRequest = { showNewCategoryDialog = false },
             title = { Text("New Category") },
@@ -377,7 +436,7 @@ fun AddEditItemDialog(
                     value = newCategoryName,
                     onValueChange = { newCategoryName = it },
                     label = { Text("Category Name") },
-                    modifier = Modifier.focusRequester(focusRequester)
+                    modifier = Modifier.focusRequester(catFocusRequester)
                 )
             },
             confirmButton = {
@@ -402,7 +461,7 @@ fun AddEditItemDialog(
 
         LaunchedEffect(Unit) {
             delay(100)
-            focusRequester.requestFocus()
+            catFocusRequester.requestFocus()
         }
     }
 }

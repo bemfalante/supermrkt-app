@@ -16,3 +16,12 @@ data class ShoppingItem(
     val categoryId: Long?,
     val isChecked: Boolean = false
 )
+
+@Entity(tableName = "bought_items")
+data class BoughtItem(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val price: Double,
+    val categoryName: String,
+    val timestamp: Long = System.currentTimeMillis()
+)

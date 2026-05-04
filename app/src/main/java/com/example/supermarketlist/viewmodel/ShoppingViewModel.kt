@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.supermarketlist.data.local.database.ShoppingDatabase
+import com.example.supermarketlist.data.local.entity.BoughtItem
 import com.example.supermarketlist.data.local.entity.Category
 import com.example.supermarketlist.data.local.entity.ShoppingItem
 import kotlinx.coroutines.flow.SharingStarted
@@ -21,6 +22,9 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val items: StateFlow<List<ShoppingItem>> = dao.getAllItems()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val boughtItems: StateFlow<List<BoughtItem>> = dao.getAllBoughtItems()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     var lastUsedCategoryId by mutableStateOf<Long?>(null)
@@ -62,6 +66,22 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
     fun deleteCategory(category: Category) {
         viewModelScope.launch {
             dao.deleteCategory(category)
+        }
+    }
+
+    fun finishShopping(purchasedItems: List<Pair<ShoppingItem, Double>>, categories: List<Category>) {
+        viewModelScope.launch {
+            purchasedItems.forEach { (item, price) ->
+                val categoryName = categories.find { it.id == item.categoryId }?.name ?: "Uncategorized"
+                dao.insertBoughtItem(
+                    BoughtItem(
+                        name = item.name,
+                        price = price,
+                        categoryName = categoryName
+                    )
+                )
+                dao.deleteItem(item)
+            }
         }
     }
 }

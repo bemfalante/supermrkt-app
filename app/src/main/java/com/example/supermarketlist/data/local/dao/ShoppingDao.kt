@@ -1,6 +1,7 @@
 package com.example.supermarketlist.data.local.dao
 
 import androidx.room.*
+import com.example.supermarketlist.data.local.entity.BoughtItem
 import com.example.supermarketlist.data.local.entity.Category
 import com.example.supermarketlist.data.local.entity.ShoppingItem
 import kotlinx.coroutines.flow.Flow
@@ -30,4 +31,10 @@ interface ShoppingDao {
 
     @Delete
     suspend fun deleteItem(item: ShoppingItem)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBoughtItem(item: BoughtItem)
+
+    @Query("SELECT * FROM bought_items ORDER BY timestamp DESC")
+    fun getAllBoughtItems(): Flow<List<BoughtItem>>
 }
