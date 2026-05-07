@@ -24,9 +24,12 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.example.supermarketlist.R
 import com.example.supermarketlist.data.local.entity.Category
+import com.example.supermarketlist.data.local.entity.ItemPriceHistory
 import com.example.supermarketlist.data.local.entity.ShoppingItem
 import com.example.supermarketlist.viewmodel.ShoppingViewModel
 import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,15 +42,26 @@ fun MainScreen(
 ) {
     val items by viewModel.items.collectAsState()
     val categories by viewModel.categories.collectAsState()
+    val activeSession by viewModel.activeSession.collectAsState()
+
     var showAddItemDialog by remember { mutableStateOf(false) }
     var newItemName by remember { mutableStateOf("") }
-    var selectedCategoryId by remember { mutableStateOf<Long?>(null) }
+    var selectedCategoryIds by remember { mutableStateOf<List<Long>>(emptyList()) }
 
     var selectedItemForAction by remember { mutableStateOf<ShoppingItem?>(null) }
     var showItemActionDialog by remember { mutableStateOf(false) }
     var showEditItemDialog by remember { mutableStateOf(false) }
     var showUncategorizedConfirmDialog by remember { mutableStateOf(false) }
     var showStartShoppingCategoryDialog by remember { mutableStateOf(false) }
+    var showPriceHistoryDialog by remember { mutableStateOf<String?>(null) }
+
+    var showSettingsMenu by remember { mutableStateOf(false) }
+
+    LaunchedEffect(activeSession) {
+        activeSession?.let {
+            onStartShopping(it.categoryId)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -68,11 +82,26 @@ fun MainScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onNavigateToCategories) {
-                        Icon(imageVector = Icons.AutoMirrored.Filled.List, contentDescription = "Manage Categories")
+                    IconButton(onClick = { showSettingsMenu = true }) {
+                        Icon(imageVector = Icons.Default.Settings, contentDescription = "Settings")
                     }
-                    IconButton(onClick = onNavigateToHistory) {
-                        Icon(imageVector = Icons.Default.ShoppingCart, contentDescription = "History")
+                    DropdownMenu(expanded = showSettingsMenu, onDismissRequest = { showSettingsMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Manage Categories") },
+                            onClick = {
+                                showSettingsMenu = false
+                                onNavigateToCategories()
+                            },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.List, null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Shopping History") },
+                            onClick = {
+                                showSettingsMenu = false
+                                onNavigateToHistory()
+                            },
+                            leadingIcon = { Icon(Icons.Default.ShoppingCart, null) }
+                        )
                     }
                 }
             )
@@ -82,7 +111,6 @@ fun MainScreen(
                 modifier = Modifier.padding(16.dp),
                 horizontalAlignment = Alignment.End
             ) {
-                // Voice Button
                 FloatingActionButton(
                     onClick = onStartVoiceInput,
                     containerColor = MaterialTheme.colorScheme.secondary,
@@ -93,10 +121,9 @@ fun MainScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Typing Button
                 FloatingActionButton(
                     onClick = {
-                        selectedCategoryId = viewModel.lastUsedCategoryId
+                        selectedCategoryIds = viewModel.lastUsedCategoryIds
                         showAddItemDialog = true
                     },
                     containerColor = MaterialTheme.colorScheme.secondary,
@@ -111,67 +138,39 @@ fun MainScreen(
             WelcomeScreen(modifier = Modifier.padding(padding), onManageCategories = onNavigateToCategories)
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
-                val grouped = items.groupBy { item ->
-                    if (item.categoryId == null) "Uncategorized"
-                    else categories.find { it.id == item.categoryId }?.name ?: "Uncategorized"
-                }
-
-                val sortedCategoryNames = grouped.keys.sortedWith { a, b ->
-                    if (a == "Uncategorized") 1 else if (b == "Uncategorized") -1 else a.compareTo(b)
-                }
-
-                sortedCategoryNames.forEach { categoryName ->
-                    val categoryItems = grouped[categoryName] ?: emptyList()
-                    val sortedItems = categoryItems.sortedBy { it.isChecked }
-
-                    item {
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = categoryName,
-                                modifier = Modifier.padding(8.dp),
-                                style = MaterialTheme.typography.titleMedium
-                            )
+                 items(items.sortedBy { it.isChecked }) { item ->
+                     ShoppingItemRow(
+                        item = item,
+                        onToggle = { viewModel.toggleItem(item) },
+                        onLongPress = {
+                            selectedItemForAction = item
+                            showItemActionDialog = true
                         }
-                    }
-                    items(sortedItems, key = { it.id }) { item ->
-                        ShoppingItemRow(
-                            item = item,
-                            onToggle = { viewModel.toggleItem(item) },
-                            onLongPress = {
-                                selectedItemForAction = item
-                                showItemActionDialog = true
-                            }
-                        )
-                    }
-                }
+                    )
+                 }
             }
         }
 
         if (showAddItemDialog) {
-            AddEditItemDialog(
+            MultiCategoryAddEditDialog(
                 title = "Add Item",
                 initialName = newItemName,
-                initialCategoryId = selectedCategoryId,
+                initialCategoryIds = selectedCategoryIds,
                 categories = categories,
                 onDismiss = { showAddItemDialog = false },
-                onConfirm = { name, catId ->
+                onConfirm = { name, catIds ->
                     newItemName = name
-                    selectedCategoryId = catId
-                    if (catId == null) {
+                    selectedCategoryIds = catIds
+                    if (catIds.isEmpty()) {
                         showUncategorizedConfirmDialog = true
                     } else {
-                        viewModel.addItem(name, catId)
+                        viewModel.addItem(name, catIds)
                         newItemName = ""
-                        selectedCategoryId = null
+                        selectedCategoryIds = emptyList()
                         showAddItemDialog = false
                     }
                 },
-                onAddCategory = { name, onDone ->
-                    viewModel.addCategory(name, onDone)
-                }
+                onAddCategory = { name, onDone -> viewModel.addCategory(name, onDone) }
             )
         }
 
@@ -182,9 +181,9 @@ fun MainScreen(
                 text = { Text("Are you sure you want to add this item to the Uncategorized list?") },
                 confirmButton = {
                     TextButton(onClick = {
-                        viewModel.addItem(newItemName, null)
+                        viewModel.addItem(newItemName, emptyList())
                         newItemName = ""
-                        selectedCategoryId = null
+                        selectedCategoryIds = emptyList()
                         showUncategorizedConfirmDialog = false
                         showAddItemDialog = false
                     }) {
@@ -220,6 +219,19 @@ fun MainScreen(
                         }
                         TextButton(
                             onClick = {
+                                showItemActionDialog = false
+                                showPriceHistoryDialog = selectedItemForAction!!.name
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                Icon(imageVector = Icons.Default.ShoppingCart, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Price History")
+                            }
+                        }
+                        TextButton(
+                            onClick = {
                                 viewModel.deleteItem(selectedItemForAction!!)
                                 showItemActionDialog = false
                                 selectedItemForAction = null
@@ -239,20 +251,28 @@ fun MainScreen(
         }
 
         if (showEditItemDialog && selectedItemForAction != null) {
-            AddEditItemDialog(
+             val currentCatIds by viewModel.getCategoriesForItem(selectedItemForAction!!.id).collectAsState(initial = emptyList())
+
+             MultiCategoryAddEditDialog(
                 title = "Edit Item",
                 initialName = selectedItemForAction!!.name,
-                initialCategoryId = selectedItemForAction!!.categoryId,
+                initialCategoryIds = currentCatIds.map { it.id },
                 categories = categories,
                 onDismiss = { showEditItemDialog = false },
-                onConfirm = { name, catId ->
-                    viewModel.updateItem(selectedItemForAction!!.copy(name = name, categoryId = catId))
+                onConfirm = { name, catIds ->
+                    viewModel.updateItem(selectedItemForAction!!.copy(name = name), catIds)
                     showEditItemDialog = false
                     selectedItemForAction = null
                 },
-                onAddCategory = { name, onDone ->
-                    viewModel.addCategory(name, onDone)
-                }
+                onAddCategory = { name, onDone -> viewModel.addCategory(name, onDone) }
+            )
+        }
+
+        if (showPriceHistoryDialog != null) {
+            PriceHistoryDialog(
+                itemName = showPriceHistoryDialog!!,
+                viewModel = viewModel,
+                onDismiss = { showPriceHistoryDialog = null }
             )
         }
 
@@ -262,17 +282,15 @@ fun MainScreen(
                 onDismissRequest = { showStartShoppingCategoryDialog = false },
                 title = { Text("Select Category to Shop") },
                 text = {
-                    CategoryDropdownWithAdd(
+                    CategoryDropdownSimple(
                         categories = categories,
                         selectedCategoryId = selectedCatId,
-                        onCategorySelected = { selectedCatId = it },
-                        onAddNewCategory = {}, // Not needed here
-                        lastUsedCategoryId = null
+                        onCategorySelected = { selectedCatId = it }
                     )
                 },
                 confirmButton = {
                     TextButton(onClick = {
-                        onStartShopping(selectedCatId)
+                        viewModel.startShopping(selectedCatId)
                         showStartShoppingCategoryDialog = false
                     }) {
                         Text("Start")
@@ -313,13 +331,13 @@ fun WelcomeScreen(modifier: Modifier = Modifier, onManageCategories: () -> Unit)
         Spacer(modifier = Modifier.height(24.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Icon(Icons.Default.Add, null, tint = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.width(8.dp))
             Text("Type the item name manually", style = MaterialTheme.typography.bodyMedium)
         }
         Spacer(modifier = Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(imageVector = ImageVector.vectorResource(id = R.drawable.ic_mic), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Icon(imageVector = ImageVector.vectorResource(id = R.drawable.ic_mic), null, tint = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.width(8.dp))
             Text("Use your voice to add items quickly", style = MaterialTheme.typography.bodyMedium)
         }
@@ -333,14 +351,14 @@ fun WelcomeScreen(modifier: Modifier = Modifier, onManageCategories: () -> Unit)
         Spacer(modifier = Modifier.height(16.dp))
         Button(
             onClick = onManageCategories,
-            modifier = Modifier.fillMaxWidth(0.5f)
+            modifier = Modifier.width(180.dp)
         ) {
-            Text("Manage Categories")
+            Text("Manage Categories", style = MaterialTheme.typography.labelSmall)
         }
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun ShoppingItemRow(item: ShoppingItem, onToggle: () -> Unit, onLongPress: () -> Unit) {
     Row(
@@ -364,27 +382,29 @@ fun ShoppingItemRow(item: ShoppingItem, onToggle: () -> Unit, onLongPress: () ->
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun AddEditItemDialog(
+fun MultiCategoryAddEditDialog(
     title: String,
     initialName: String,
-    initialCategoryId: Long?,
+    initialCategoryIds: List<Long>,
     categories: List<Category>,
     onDismiss: () -> Unit,
-    onConfirm: (String, Long?) -> Unit,
+    onConfirm: (String, List<Long>) -> Unit,
     onAddCategory: (String, (Long) -> Unit) -> Unit
 ) {
     var name by remember { mutableStateOf(initialName) }
-    var selectedCategoryId by remember { mutableStateOf(initialCategoryId) }
+    var selectedCategoryIds by remember { mutableStateOf(initialCategoryIds) }
     var showNewCategoryDialog by remember { mutableStateOf(false) }
     var newCategoryName by remember { mutableStateOf("") }
+
+    val nameFocusRequester = remember { FocusRequester() }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
             Column {
-                val nameFocusRequester = remember { FocusRequester() }
                 TextField(
                     value = name,
                     onValueChange = { name = it },
@@ -398,22 +418,47 @@ fun AddEditItemDialog(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("Category (Optional):", style = MaterialTheme.typography.bodyMedium)
-                Spacer(modifier = Modifier.height(8.dp))
+                Text("Categories:", style = MaterialTheme.typography.bodyMedium)
 
-                CategoryDropdownWithAdd(
-                    categories = categories,
-                    selectedCategoryId = selectedCategoryId,
-                    onCategorySelected = { selectedCategoryId = it },
-                    onAddNewCategory = { showNewCategoryDialog = true },
-                    lastUsedCategoryId = initialCategoryId
-                )
+                LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
+                    items(categories) { category ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .combinedClickable(onClick = {
+                                    selectedCategoryIds = if (selectedCategoryIds.contains(category.id)) {
+                                        selectedCategoryIds - category.id
+                                    } else {
+                                        selectedCategoryIds + category.id
+                                    }
+                                })
+                        ) {
+                            Checkbox(
+                                checked = selectedCategoryIds.contains(category.id),
+                                onCheckedChange = { checked ->
+                                    selectedCategoryIds = if (checked) {
+                                        selectedCategoryIds + category.id
+                                    } else {
+                                        selectedCategoryIds - category.id
+                                    }
+                                }
+                            )
+                            Text(category.name)
+                        }
+                    }
+                    item {
+                        TextButton(onClick = { showNewCategoryDialog = true }) {
+                            Text("+ Create New Category")
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
             TextButton(onClick = {
                 if (name.isNotBlank()) {
-                    onConfirm(name, selectedCategoryId)
+                    onConfirm(name, selectedCategoryIds)
                 }
             }) {
                 Text("Confirm")
@@ -443,7 +488,7 @@ fun AddEditItemDialog(
                 TextButton(onClick = {
                     if (newCategoryName.isNotBlank()) {
                         onAddCategory(newCategoryName) { newId ->
-                            selectedCategoryId = newId
+                            selectedCategoryIds = selectedCategoryIds + newId
                         }
                         newCategoryName = ""
                         showNewCategoryDialog = false
@@ -458,7 +503,6 @@ fun AddEditItemDialog(
                 }
             }
         )
-
         LaunchedEffect(Unit) {
             delay(100)
             catFocusRequester.requestFocus()
@@ -467,37 +511,27 @@ fun AddEditItemDialog(
 }
 
 @Composable
-fun CategoryDropdownWithAdd(
+fun CategoryDropdownSimple(
     categories: List<Category>,
     selectedCategoryId: Long?,
-    onCategorySelected: (Long?) -> Unit,
-    onAddNewCategory: () -> Unit,
-    lastUsedCategoryId: Long? = null
+    onCategorySelected: (Long?) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
     val selectedCategory = categories.find { it.id == selectedCategoryId }
 
-    val sortedCategories = remember(categories, lastUsedCategoryId) {
-        categories.sortedWith { a, b ->
-            if (a.id == lastUsedCategoryId) -1
-            else if (b.id == lastUsedCategoryId) 1
-            else a.name.compareTo(b.name)
-        }
-    }
-
     Box {
         OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
-            Text(selectedCategory?.name ?: "No Category")
+            Text(selectedCategory?.name ?: "Uncategorized")
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             DropdownMenuItem(
-                text = { Text("None") },
+                text = { Text("Uncategorized") },
                 onClick = {
                     onCategorySelected(null)
                     expanded = false
                 }
             )
-            sortedCategories.forEach { category ->
+            categories.forEach { category ->
                 DropdownMenuItem(
                     text = { Text(category.name) },
                     onClick = {
@@ -506,14 +540,50 @@ fun CategoryDropdownWithAdd(
                     }
                 )
             }
-            HorizontalDivider()
-            DropdownMenuItem(
-                text = { Text("+ Create New Category", color = MaterialTheme.colorScheme.primary) },
-                onClick = {
-                    onAddNewCategory()
-                    expanded = false
-                }
-            )
         }
     }
+}
+
+@Composable
+fun PriceHistoryDialog(
+    itemName: String,
+    viewModel: ShoppingViewModel,
+    onDismiss: () -> Unit
+) {
+    val history by viewModel.getPriceHistoryForItem(itemName).collectAsState(initial = emptyList())
+    val dateFormat = SimpleDateFormat("dd/MM/yy", Locale.getDefault())
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Price History: $itemName") },
+        text = {
+            if (history.isEmpty()) {
+                Text("No price history found.")
+            } else {
+                LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
+                    items(history) { entry ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text(entry.categoryName, style = MaterialTheme.typography.bodySmall)
+                                Text(dateFormat.format(Date(entry.timestamp)), style = MaterialTheme.typography.labelSmall)
+                            }
+                            Text(
+                                text = "R$ ${String.format("%.2f", entry.price)} (${if(entry.status == "BOUGHT") "Bought" else "Not Bought"})",
+                                color = if(entry.status == "BOUGHT") Color(0xFF4CAF50) else Color.Red,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
 }

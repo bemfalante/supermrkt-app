@@ -5,11 +5,21 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.example.supermarketlist.data.local.dao.ShoppingDao
-import com.example.supermarketlist.data.local.entity.BoughtItem
-import com.example.supermarketlist.data.local.entity.Category
-import com.example.supermarketlist.data.local.entity.ShoppingItem
+import com.example.supermarketlist.data.local.entity.*
 
-@Database(entities = [Category::class, ShoppingItem::class, BoughtItem::class], version = 3, exportSchema = false)
+@Database(
+    entities = [
+        Category::class,
+        ShoppingItem::class,
+        ItemCategoryCrossRef::class,
+        ShoppingSession::class,
+        ShoppingSessionItem::class,
+        ItemPriceHistory::class,
+        ActiveShoppingSession::class
+    ],
+    version = 4,
+    exportSchema = false
+)
 abstract class ShoppingDatabase : RoomDatabase() {
     abstract fun shoppingDao(): ShoppingDao
 

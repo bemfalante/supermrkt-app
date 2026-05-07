@@ -9,6 +9,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.supermarketlist.viewmodel.ShoppingViewModel
 import java.text.SimpleDateFormat
@@ -17,7 +19,7 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(viewModel: ShoppingViewModel, onNavigateBack: () -> Unit) {
-    val boughtItems by viewModel.boughtItems.collectAsState()
+    val sessions by viewModel.sessions.collectAsState()
     val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
 
     Scaffold(
@@ -32,33 +34,59 @@ fun HistoryScreen(viewModel: ShoppingViewModel, onNavigateBack: () -> Unit) {
             )
         }
     ) { padding ->
-        if (boughtItems.isEmpty()) {
+        if (sessions.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Text("No shopping history yet")
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
-                items(boughtItems) { item ->
+                items(sessions) { session ->
+                    val sessionItems by viewModel.getItemsForSession(session.id).collectAsState(initial = emptyList())
+
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(8.dp)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(item.name, style = MaterialTheme.typography.titleMedium)
-                                Text(String.format("%.2f", item.price), style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                text = "Shopping in ${session.categoryName}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = dateFormat.format(Date(session.timestamp)),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Group session items by status
+                            val bought = sessionItems.filter { it.status == "BOUGHT" }
+                            val foundNotBought = sessionItems.filter { it.status == "FOUND_NOT_BOUGHT" }
+                            val notFound = sessionItems.filter { it.status == "NOT_FOUND" }
+
+                            if (bought.isNotEmpty()) {
+                                Text("Bought:", style = MaterialTheme.typography.labelMedium, color = Color(0xFF4CAF50))
+                                bought.forEach {
+                                    Text("• ${it.itemName} (R$ ${String.format("%.2f", it.price)})", style = MaterialTheme.typography.bodySmall)
+                                }
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(item.categoryName, style = MaterialTheme.typography.bodySmall)
-                                Text(dateFormat.format(Date(item.timestamp)), style = MaterialTheme.typography.bodySmall)
+
+                            if (foundNotBought.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("Found but not bought:", style = MaterialTheme.typography.labelMedium, color = Color.Red)
+                                foundNotBought.forEach {
+                                    Text("• ${it.itemName} (R$ ${String.format("%.2f", it.price)})", style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+
+                            if (notFound.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("Not found:", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+                                notFound.forEach {
+                                    Text("• ${it.itemName}", style = MaterialTheme.typography.bodySmall)
+                                }
                             }
                         }
                     }

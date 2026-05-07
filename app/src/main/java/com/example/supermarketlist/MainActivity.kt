@@ -61,7 +61,7 @@ fun AppNavigation() {
             if (!spokenText.isNullOrBlank()) {
                 handleVoiceInput(spokenText, categories) { itemName, categoryId ->
                     if (categoryId != null) {
-                        viewModel.addItem(itemName, categoryId)
+                        viewModel.addItem(itemName, listOf(categoryId))
                     } else {
                         voiceDetectedItemName = itemName
                         showVoiceCategoryDialog = true
@@ -72,7 +72,7 @@ fun AppNavigation() {
     }
 
     if (showVoiceCategoryDialog) {
-        var selectedCategoryId by remember(voiceDetectedItemName) { mutableStateOf<Long?>(viewModel.lastUsedCategoryId) }
+        var selectedCategoryId by remember(voiceDetectedItemName) { mutableStateOf<Long?>(viewModel.lastUsedCategoryIds.firstOrNull()) }
         var showIntentionalConfirm by remember { mutableStateOf(false) }
         var showNewCategoryDialog by remember { mutableStateOf(false) }
         var newCategoryName by remember { mutableStateOf("") }
@@ -84,7 +84,7 @@ fun AppNavigation() {
                 text = { Text("Are you sure you want to add '$voiceDetectedItemName' to the Uncategorized list?") },
                 confirmButton = {
                     TextButton(onClick = {
-                        viewModel.addItem(voiceDetectedItemName, null)
+                        viewModel.addItem(voiceDetectedItemName, emptyList())
                         showVoiceCategoryDialog = false
                         showIntentionalConfirm = false
                     }) {
@@ -117,7 +117,7 @@ fun AppNavigation() {
                 confirmButton = {
                     TextButton(onClick = {
                         if (selectedCategoryId != null) {
-                            viewModel.addItem(voiceDetectedItemName, selectedCategoryId)
+                            viewModel.addItem(voiceDetectedItemName, listOf(selectedCategoryId!!))
                             showVoiceCategoryDialog = false
                         } else {
                             showIntentionalConfirm = true
@@ -216,7 +216,16 @@ fun AppNavigation() {
                 viewModel = viewModel,
                 categoryId = if (categoryId == -1L) null else categoryId,
                 onFinished = { navController.popBackStack("main", false) },
-                onNavigateBack = { navController.popBackStack() }
+                onStartVoiceInput = {
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                        }
+                        voiceLauncher.launch(intent)
+                    } else {
+                        audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                }
             )
         }
     }
