@@ -76,6 +76,12 @@ interface ShoppingDao {
     @Query("SELECT * FROM active_shopping_items")
     fun getActiveShoppingItems(): Flow<List<ActiveShoppingItem>>
 
+    @Query("SELECT * FROM active_shopping_items")
+    suspend fun getActiveShoppingItemsSnapshot(): List<ActiveShoppingItem>
+
+    @Query("UPDATE active_shopping_items SET price = :price, quantity = :quantity WHERE itemId = :itemId")
+    suspend fun updateActiveItemDetails(itemId: Long, price: Double, quantity: Double)
+
     @Query("DELETE FROM active_shopping_items")
     suspend fun clearActiveShoppingItems()
 

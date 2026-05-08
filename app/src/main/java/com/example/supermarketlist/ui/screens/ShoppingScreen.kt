@@ -65,6 +65,12 @@ fun ShoppingScreen(
         // Do nothing to prevent system back navigation
     }
 
+    LaunchedEffect(Unit) {
+        viewModel.newItemAddedEvent.collect { newId ->
+            showPriceQtyDialogForItem = newId
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -173,9 +179,7 @@ fun ShoppingScreen(
                         },
                         onDoubleClick = {
                             // Double Click -> NOT FOUND (Empty)
-                            viewModel.updateActiveItemState(item.id, "EMPTY")
-                            viewModel.updateActiveItemPrice(item.id, 0.0)
-                            viewModel.updateActiveItemQuantity(item.id, 1.0)
+                            viewModel.resetActiveItem(item.id)
                         },
                         onPriceLongPress = {
                              showPriceQtyDialogForItem = item.id
@@ -225,8 +229,7 @@ fun ShoppingScreen(
                         val price = priceInput.replace(",", ".").toDoubleOrNull() ?: 0.0
                         val qty = qtyInput.replace(",", ".").toDoubleOrNull() ?: 1.0
 
-                        viewModel.updateActiveItemPrice(itemId, price)
-                        viewModel.updateActiveItemQuantity(itemId, qty)
+                        viewModel.updateActiveItemDetails(itemId, price, qty)
                         showPriceQtyDialogForItem = null
                     }) {
                         Text("Save")
@@ -265,9 +268,6 @@ fun ShoppingScreen(
                     TextButton(onClick = {
                         if (newItemName.isNotBlank()) {
                             viewModel.addItem(newItemName, categoryId)
-                            // We should also add it to the active session items if a session is running
-                            // but the startShopping logic usually handles it.
-                            // For simplicity, we just add it to the list of items.
                             showAddItemDialog = false
                         }
                     }) {
@@ -329,11 +329,7 @@ fun ShoppingItemRow(
             val ptBr = Locale("pt", "BR")
             Text(
                 text = "R$ ${String.format(ptBr, "%.2f", total)}",
-                modifier = Modifier
-                    .padding(horizontal = 8.dp)
-                    .pointerInput(Unit) {
-                        detectTapGestures(onLongPress = { onPriceLongPress() })
-                    },
+                modifier = Modifier.padding(horizontal = 8.dp),
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
@@ -350,13 +346,6 @@ fun ShoppingItemRow(
                         ItemState.RED -> Color.Red
                     }
                 )
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = { onToggle() },
-                        onLongPress = { onLongPress() },
-                        onDoubleTap = { onDoubleClick() }
-                    )
-                }
         )
     }
 }

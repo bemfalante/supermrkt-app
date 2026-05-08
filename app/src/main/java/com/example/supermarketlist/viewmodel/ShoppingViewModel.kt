@@ -38,13 +38,27 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
     val sessions: StateFlow<List<ShoppingSession>> = dao.getAllSessions()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private val _newItemAddedEvent = MutableSharedFlow<Long>()
+    val newItemAddedEvent = _newItemAddedEvent.asSharedFlow()
+
     var lastUsedCategoryId by mutableStateOf<Long?>(null)
         private set
 
-    fun addItem(name: String, categoryId: Long?) {
+    fun addItem(name: String, categoryId: Long?, onAdded: (Long) -> Unit = {}) {
         lastUsedCategoryId = categoryId
         viewModelScope.launch {
-            dao.insertItem(ShoppingItem(name = name, categoryId = categoryId))
+            val id = dao.insertItem(ShoppingItem(name = name, categoryId = categoryId))
+
+            // If we are currently in a shopping session for this category (or uncategorized), add it to the active items
+            activeSession.value?.let { session ->
+                if (session.categoryId == categoryId) {
+                    dao.upsertActiveShoppingItem(
+                        ActiveShoppingItem(itemId = id, state = "GREEN", price = 0.0, quantity = 1.0)
+                    )
+                    _newItemAddedEvent.emit(id)
+                }
+            }
+            onAdded(id)
         }
     }
 
@@ -131,19 +145,17 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun updateActiveItemPrice(itemId: Long, price: Double) {
+    fun updateActiveItemDetails(itemId: Long, price: Double, quantity: Double) {
         viewModelScope.launch {
-            val current = activeShoppingItems.value.find { it.itemId == itemId }
-                ?: ActiveShoppingItem(itemId = itemId, state = "EMPTY", price = price, quantity = 1.0)
-            dao.upsertActiveShoppingItem(current.copy(price = price))
+            dao.updateActiveItemDetails(itemId, price, quantity)
         }
     }
 
-    fun updateActiveItemQuantity(itemId: Long, quantity: Double) {
+    fun resetActiveItem(itemId: Long) {
         viewModelScope.launch {
-            val current = activeShoppingItems.value.find { it.itemId == itemId }
-                ?: ActiveShoppingItem(itemId = itemId, state = "EMPTY", price = 0.0, quantity = quantity)
-            dao.upsertActiveShoppingItem(current.copy(quantity = quantity))
+            dao.upsertActiveShoppingItem(
+                ActiveShoppingItem(itemId = itemId, state = "EMPTY", price = 0.0, quantity = 1.0)
+            )
         }
     }
 
@@ -161,7 +173,7 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
             val categoryName = if (categoryId == null) "Uncategorized"
             else categories.value.find { it.id == categoryId }?.name ?: "Unknown"
 
-            val activeItems = activeShoppingItems.value
+            val activeItems = dao.getActiveShoppingItemsSnapshot()
             val shoppingItems = items.value.associateBy { it.id }
 
             val sessionId = dao.insertShoppingSession(ShoppingSession(categoryName = categoryName))
