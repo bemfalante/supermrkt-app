@@ -290,6 +290,14 @@ fun AddManualSessionDialog(
                                 Text(category.name, modifier = Modifier.fillMaxWidth())
                             }
                         }
+                        item {
+                            TextButton(
+                                onClick = { categoryNameInput = "Uncategorized" },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Uncategorized", modifier = Modifier.fillMaxWidth())
+                            }
+                        }
                     }
 
                     LaunchedEffect(Unit) {

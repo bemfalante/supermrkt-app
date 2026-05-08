@@ -248,13 +248,6 @@ fun CategoryDropdownWithNone(
             Text(selectedCategory?.name ?: "No Category")
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(
-                text = { Text("None") },
-                onClick = {
-                    onCategorySelected(null)
-                    expanded = false
-                }
-            )
             categories.forEach { category ->
                 DropdownMenuItem(
                     text = { Text(category.name) },
@@ -264,6 +257,13 @@ fun CategoryDropdownWithNone(
                     }
                 )
             }
+            DropdownMenuItem(
+                text = { Text("None") },
+                onClick = {
+                    onCategorySelected(null)
+                    expanded = false
+                }
+            )
             HorizontalDivider()
             DropdownMenuItem(
                 text = { Text("+ Create New Category", color = MaterialTheme.colorScheme.primary) },

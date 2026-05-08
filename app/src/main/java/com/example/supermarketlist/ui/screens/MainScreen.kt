@@ -464,19 +464,6 @@ fun AddEditItemDialog(
                     .padding(8.dp)
                 ) {
                     LazyColumn {
-                        item {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .combinedClickable(onClick = { selectedCategoryId = null })
-                                    .padding(vertical = 4.dp)
-                            ) {
-                                RadioButton(selected = selectedCategoryId == null, onClick = { selectedCategoryId = null })
-                                Text("None")
-                            }
-                        }
-
                         items(categories) { category ->
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -487,6 +474,19 @@ fun AddEditItemDialog(
                             ) {
                                 RadioButton(selected = selectedCategoryId == category.id, onClick = { selectedCategoryId = category.id })
                                 Text(category.name)
+                            }
+                        }
+
+                        item {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .combinedClickable(onClick = { selectedCategoryId = null })
+                                    .padding(vertical = 4.dp)
+                            ) {
+                                RadioButton(selected = selectedCategoryId == null, onClick = { selectedCategoryId = null })
+                                Text("None")
                             }
                         }
                     }
@@ -566,13 +566,6 @@ fun CategoryDropdownSimple(
             Text(selectedCategory?.name ?: "Uncategorized")
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(
-                text = { Text("Uncategorized") },
-                onClick = {
-                    onCategorySelected(null)
-                    expanded = false
-                }
-            )
             categories.forEach { category ->
                 DropdownMenuItem(
                     text = { Text(category.name) },
@@ -582,6 +575,13 @@ fun CategoryDropdownSimple(
                     }
                 )
             }
+            DropdownMenuItem(
+                text = { Text("Uncategorized") },
+                onClick = {
+                    onCategorySelected(null)
+                    expanded = false
+                }
+            )
         }
     }
 }

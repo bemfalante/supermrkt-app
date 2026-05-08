@@ -174,9 +174,11 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
             else categories.value.find { it.id == categoryId }?.name ?: "Unknown"
 
             val activeItems = dao.getActiveShoppingItemsSnapshot()
-            val shoppingItems = items.value.associateBy { it.id }
+            val shoppingItems = dao.getAllItemsSnapshot().associateBy { it.id }
 
-            val sessionId = dao.insertShoppingSession(ShoppingSession(categoryName = categoryName))
+            val sessionItems = mutableListOf<ShoppingSessionItem>()
+            val priceHistories = mutableListOf<ItemPriceHistory>()
+            val itemsToMarkChecked = mutableListOf<ShoppingItem>()
 
             activeItems.forEach { active ->
                 val item = shoppingItems[active.itemId] ?: return@forEach
@@ -186,9 +188,9 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
                     else -> "NOT_FOUND"
                 }
 
-                dao.insertShoppingSessionItem(
+                sessionItems.add(
                     ShoppingSessionItem(
-                        sessionId = sessionId,
+                        sessionId = 0, // Will be set in transaction
                         itemName = item.name,
                         price = active.price,
                         quantity = active.quantity,
@@ -197,7 +199,7 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
                 )
 
                 if (status == "BOUGHT" || status == "FOUND_NOT_BOUGHT") {
-                    dao.insertPriceHistory(
+                    priceHistories.add(
                         ItemPriceHistory(
                             itemName = item.name,
                             price = active.price,
@@ -209,12 +211,16 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
                 }
 
                 if (status == "BOUGHT") {
-                    dao.updateItem(item.copy(isChecked = true))
+                    itemsToMarkChecked.add(item)
                 }
             }
 
-            dao.clearActiveShoppingItems()
-            dao.clearActiveSession()
+            dao.completeShoppingSession(
+                session = ShoppingSession(categoryName = categoryName),
+                sessionItems = sessionItems,
+                priceHistories = priceHistories,
+                itemsToMarkChecked = itemsToMarkChecked
+            )
         } finally {
             finishMutex.unlock()
         }

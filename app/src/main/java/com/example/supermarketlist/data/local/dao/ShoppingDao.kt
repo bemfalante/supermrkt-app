@@ -20,6 +20,9 @@ interface ShoppingDao {
     @Query("SELECT * FROM shopping_items")
     fun getAllItems(): Flow<List<ShoppingItem>>
 
+    @Query("SELECT * FROM shopping_items")
+    suspend fun getAllItemsSnapshot(): List<ShoppingItem>
+
     @Query("SELECT * FROM shopping_items WHERE categoryId = :categoryId")
     fun getItemsByCategory(categoryId: Long): Flow<List<ShoppingItem>>
 
@@ -84,6 +87,21 @@ interface ShoppingDao {
 
     @Query("DELETE FROM active_shopping_items")
     suspend fun clearActiveShoppingItems()
+
+    @Transaction
+    suspend fun completeShoppingSession(
+        session: ShoppingSession,
+        sessionItems: List<ShoppingSessionItem>,
+        priceHistories: List<ItemPriceHistory>,
+        itemsToMarkChecked: List<ShoppingItem>
+    ) {
+        val sessionId = insertShoppingSession(session)
+        sessionItems.forEach { insertShoppingSessionItem(it.copy(sessionId = sessionId)) }
+        priceHistories.forEach { insertPriceHistory(it) }
+        itemsToMarkChecked.forEach { updateItem(it.copy(isChecked = true)) }
+        clearActiveShoppingItems()
+        clearActiveSession()
+    }
 
     // Price History
     @Insert(onConflict = OnConflictStrategy.REPLACE)
