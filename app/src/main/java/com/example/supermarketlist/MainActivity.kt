@@ -187,7 +187,9 @@ fun AppNavigation() {
                 onNavigateToCategories = { navController.navigate("categories") },
                 onNavigateToHistory = { navController.navigate("history") },
                 onStartShopping = { catId ->
-                    navController.navigate("shopping/${catId ?: -1L}")
+                    if (navController.currentDestination?.route?.startsWith("shopping") != true) {
+                        navController.navigate("shopping/${catId ?: -1L}")
+                    }
                 },
                 onStartVoiceInput = {
                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {

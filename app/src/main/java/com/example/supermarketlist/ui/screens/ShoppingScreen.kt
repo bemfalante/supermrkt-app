@@ -28,6 +28,7 @@ import com.example.supermarketlist.R
 import com.example.supermarketlist.data.local.entity.ShoppingItem
 import com.example.supermarketlist.viewmodel.ShoppingViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 enum class ItemState { EMPTY, GREEN, RED }
 
@@ -52,6 +53,7 @@ fun ShoppingScreen(
     var showPriceHistoryDialog by remember { mutableStateOf<String?>(null) }
 
     var finishing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     val totalPrice = remember(itemPrices, itemQuantities) {
         itemPrices.keys.filter { itemStates[it] == ItemState.GREEN }.sumOf {
@@ -77,14 +79,16 @@ fun ShoppingScreen(
                         onClick = {
                             if (!finishing) {
                                 finishing = true
-                                val bought = activeItems.filter { itemStates[it.id] == ItemState.GREEN }
-                                    .map { Triple(it, itemPrices[it.id] ?: 0.0, itemQuantities[it.id] ?: 1.0) }
-                                val foundNotBought = activeItems.filter { itemStates[it.id] == ItemState.RED }
-                                    .map { Triple(it, itemPrices[it.id] ?: 0.0, itemQuantities[it.id] ?: 1.0) }
-                                val notFound = activeItems.filter { itemStates[it.id] == null || itemStates[it.id] == ItemState.EMPTY }
+                                scope.launch {
+                                    val bought = activeItems.filter { itemStates[it.id] == ItemState.GREEN }
+                                        .map { Triple(it, itemPrices[it.id] ?: 0.0, itemQuantities[it.id] ?: 1.0) }
+                                    val foundNotBought = activeItems.filter { itemStates[it.id] == ItemState.RED }
+                                        .map { Triple(it, itemPrices[it.id] ?: 0.0, itemQuantities[it.id] ?: 1.0) }
+                                    val notFound = activeItems.filter { itemStates[it.id] == null || itemStates[it.id] == ItemState.EMPTY }
 
-                                viewModel.finishShopping(categoryId, bought, foundNotBought, notFound)
-                                onFinished()
+                                    viewModel.finishShopping(categoryId, bought, foundNotBought, notFound)
+                                    onFinished()
+                                }
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Red),

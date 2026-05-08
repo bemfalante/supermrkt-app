@@ -96,73 +96,71 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun finishShopping(
+    suspend fun finishShopping(
         categoryId: Long?,
         purchasedItems: List<Triple<ShoppingItem, Double, Double>>, // Item, Price, Quantity
         foundNotBoughtItems: List<Triple<ShoppingItem, Double, Double>>,
         notFoundItems: List<ShoppingItem>
     ) {
-        viewModelScope.launch {
-            val categoryName = if (categoryId == null) "Uncategorized"
-                              else categories.value.find { it.id == categoryId }?.name ?: "Unknown"
+        val categoryName = if (categoryId == null) "Uncategorized"
+        else categories.value.find { it.id == categoryId }?.name ?: "Unknown"
 
-            val sessionId = dao.insertShoppingSession(ShoppingSession(categoryName = categoryName))
+        val sessionId = dao.insertShoppingSession(ShoppingSession(categoryName = categoryName))
 
-            purchasedItems.forEach { (item, price, qty) ->
-                dao.insertShoppingSessionItem(
-                    ShoppingSessionItem(
-                        sessionId = sessionId,
-                        itemName = item.name,
-                        price = price,
-                        quantity = qty,
-                        status = "BOUGHT"
-                    )
+        purchasedItems.forEach { (item, price, qty) ->
+            dao.insertShoppingSessionItem(
+                ShoppingSessionItem(
+                    sessionId = sessionId,
+                    itemName = item.name,
+                    price = price,
+                    quantity = qty,
+                    status = "BOUGHT"
                 )
-                dao.insertPriceHistory(
-                    ItemPriceHistory(
-                        itemName = item.name,
-                        price = price,
-                        quantity = qty,
-                        categoryName = categoryName,
-                        status = "BOUGHT"
-                    )
+            )
+            dao.insertPriceHistory(
+                ItemPriceHistory(
+                    itemName = item.name,
+                    price = price,
+                    quantity = qty,
+                    categoryName = categoryName,
+                    status = "BOUGHT"
                 )
-                dao.updateItem(item.copy(isChecked = true))
-            }
-            foundNotBoughtItems.forEach { (item, price, qty) ->
-                dao.insertShoppingSessionItem(
-                    ShoppingSessionItem(
-                        sessionId = sessionId,
-                        itemName = item.name,
-                        price = price,
-                        quantity = qty,
-                        status = "FOUND_NOT_BOUGHT"
-                    )
-                )
-                dao.insertPriceHistory(
-                    ItemPriceHistory(
-                        itemName = item.name,
-                        price = price,
-                        quantity = qty,
-                        categoryName = categoryName,
-                        status = "FOUND_NOT_BOUGHT"
-                    )
-                )
-            }
-            notFoundItems.forEach { item ->
-                dao.insertShoppingSessionItem(
-                    ShoppingSessionItem(
-                        sessionId = sessionId,
-                        itemName = item.name,
-                        price = 0.0,
-                        quantity = 0.0,
-                        status = "NOT_FOUND"
-                    )
-                )
-            }
-
-            dao.clearActiveSession()
+            )
+            dao.updateItem(item.copy(isChecked = true))
         }
+        foundNotBoughtItems.forEach { (item, price, qty) ->
+            dao.insertShoppingSessionItem(
+                ShoppingSessionItem(
+                    sessionId = sessionId,
+                    itemName = item.name,
+                    price = price,
+                    quantity = qty,
+                    status = "FOUND_NOT_BOUGHT"
+                )
+            )
+            dao.insertPriceHistory(
+                ItemPriceHistory(
+                    itemName = item.name,
+                    price = price,
+                    quantity = qty,
+                    categoryName = categoryName,
+                    status = "FOUND_NOT_BOUGHT"
+                )
+            )
+        }
+        notFoundItems.forEach { item ->
+            dao.insertShoppingSessionItem(
+                ShoppingSessionItem(
+                    sessionId = sessionId,
+                    itemName = item.name,
+                    price = 0.0,
+                    quantity = 0.0,
+                    status = "NOT_FOUND"
+                )
+            )
+        }
+
+        dao.clearActiveSession()
     }
 
     fun addManualSession(categoryName: String, items: List<ShoppingSessionItem>) {
