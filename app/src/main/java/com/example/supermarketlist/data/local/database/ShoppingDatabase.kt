@@ -14,9 +14,10 @@ import com.example.supermarketlist.data.local.entity.*
         ShoppingSession::class,
         ShoppingSessionItem::class,
         ItemPriceHistory::class,
-        ActiveShoppingSession::class
+        ActiveShoppingSession::class,
+        ActiveShoppingItem::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class ShoppingDatabase : RoomDatabase() {

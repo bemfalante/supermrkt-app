@@ -8,6 +8,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -71,19 +72,25 @@ fun HistoryScreen(viewModel: ShoppingViewModel, onNavigateBack: () -> Unit) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Shopping in ${session.categoryName}",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                val ptBr = Locale("pt", "BR")
-                                Text(
-                                    text = "Total: R$ ${String.format(ptBr, "%.2f", totalSessionPrice)}",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Shopping in ${session.categoryName}",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    val ptBr = Locale("pt", "BR")
+                                    Text(
+                                        text = "Total: R$ ${String.format(ptBr, "%.2f", totalSessionPrice)}",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                IconButton(onClick = { viewModel.deleteSession(session) }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete Session", tint = Color.Red)
+                                }
                             }
                             Text(
                                 text = dateFormat.format(Date(session.timestamp)),

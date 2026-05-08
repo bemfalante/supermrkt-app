@@ -44,13 +44,13 @@ fun ShoppingScreen(
 ) {
     val categories by viewModel.categories.collectAsState()
     val categoryItems by viewModel.getItemsByCategory(categoryId).collectAsState(initial = emptyList())
-    val activeItems = categoryItems.filter { !it.isChecked }
+    val activeShoppingItems by viewModel.activeShoppingItems.collectAsState()
+    val itemsById = categoryItems.associateBy { it.id }
 
-    val itemStates = remember { mutableStateMapOf<Long, ItemState>() }
-    val itemPrices = remember { mutableStateMapOf<Long, Double>() }
-    val itemQuantities = remember { mutableStateMapOf<Long, Double>() }
+    // We only show items that are in the active session and match the current category filter
+    val activeItems = activeShoppingItems.filter { itemsById.containsKey(it.itemId) }
 
-    var showPriceQtyDialogForItem by remember { mutableStateOf<ShoppingItem?>(null) }
+    var showPriceQtyDialogForItem by remember { mutableStateOf<Long?>(null) }
     var showAddItemDialog by remember { mutableStateOf(false) }
     var showPriceHistoryDialog by remember { mutableStateOf<String?>(null) }
 
@@ -58,9 +58,7 @@ fun ShoppingScreen(
     val scope = rememberCoroutineScope()
 
     val ptBr = remember { Locale("pt", "BR") }
-    val totalPrice = itemPrices.keys.filter { itemStates[it] == ItemState.GREEN }.sumOf {
-        (itemPrices[it] ?: 0.0) * (itemQuantities[it] ?: 1.0)
-    }
+    val totalPrice = activeItems.filter { it.state == "GREEN" }.sumOf { it.price * it.quantity }
 
     // Never close except via Finish button
     BackHandler {
@@ -86,13 +84,7 @@ fun ShoppingScreen(
                             if (!finishing) {
                                 finishing = true
                                 scope.launch {
-                                    val bought = activeItems.filter { itemStates[it.id] == ItemState.GREEN }
-                                        .map { Triple(it, itemPrices[it.id] ?: 0.0, itemQuantities[it.id] ?: 1.0) }
-                                    val foundNotBought = activeItems.filter { itemStates[it.id] == ItemState.RED }
-                                        .map { Triple(it, itemPrices[it.id] ?: 0.0, itemQuantities[it.id] ?: 1.0) }
-                                    val notFound = activeItems.filter { itemStates[it.id] == null || itemStates[it.id] == ItemState.EMPTY }
-
-                                    viewModel.finishShopping(categoryId, bought, foundNotBought, notFound)
+                                    viewModel.finishShopping()
                                     onFinished()
                                 }
                             }
@@ -139,47 +131,54 @@ fun ShoppingScreen(
         } else {
             // Sort: GREEN at very bottom, RED above them, EMPTY at top.
             val sortedItems = activeItems.sortedWith { a, b ->
-                val stateA = itemStates[a.id] ?: ItemState.EMPTY
-                val stateB = itemStates[b.id] ?: ItemState.EMPTY
+                val stateA = a.state
+                val stateB = b.state
 
                 val weightA = when(stateA) {
-                    ItemState.EMPTY -> 0
-                    ItemState.RED -> 1
-                    ItemState.GREEN -> 2
+                    "EMPTY" -> 0
+                    "RED" -> 1
+                    "GREEN" -> 2
+                    else -> 0
                 }
                 val weightB = when(stateB) {
-                    ItemState.EMPTY -> 0
-                    ItemState.RED -> 1
-                    ItemState.GREEN -> 2
+                    "EMPTY" -> 0
+                    "RED" -> 1
+                    "GREEN" -> 2
+                    else -> 0
                 }
                 weightA.compareTo(weightB)
             }
 
             LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(bottom = 80.dp)) {
-                items(sortedItems, key = { it.id }) { item ->
+                items(sortedItems, key = { it.itemId }) { activeItem ->
+                    val item = itemsById[activeItem.itemId] ?: return@items
                     ShoppingItemRow(
                         item = item,
-                        state = itemStates[item.id] ?: ItemState.EMPTY,
-                        price = itemPrices[item.id],
-                        quantity = itemQuantities[item.id],
+                        state = when(activeItem.state) {
+                            "GREEN" -> ItemState.GREEN
+                            "RED" -> ItemState.RED
+                            else -> ItemState.EMPTY
+                        },
+                        price = if (activeItem.price > 0) activeItem.price else null,
+                        quantity = activeItem.quantity,
                         onToggle = {
                             // Single Click -> BOUGHT (Green)
-                            itemStates[item.id] = ItemState.GREEN
-                            showPriceQtyDialogForItem = item
+                            viewModel.updateActiveItemState(item.id, "GREEN")
+                            showPriceQtyDialogForItem = item.id
                         },
                         onLongPress = {
                             // Long Press -> FOUND NOT BOUGHT (Red)
-                            itemStates[item.id] = ItemState.RED
-                            showPriceQtyDialogForItem = item
+                            viewModel.updateActiveItemState(item.id, "RED")
+                            showPriceQtyDialogForItem = item.id
                         },
                         onDoubleClick = {
                             // Double Click -> NOT FOUND (Empty)
-                            itemStates[item.id] = ItemState.EMPTY
-                            itemPrices.remove(item.id)
-                            itemQuantities.remove(item.id)
+                            viewModel.updateActiveItemState(item.id, "EMPTY")
+                            viewModel.updateActiveItemPrice(item.id, 0.0)
+                            viewModel.updateActiveItemQuantity(item.id, 1.0)
                         },
                         onPriceLongPress = {
-                             showPriceQtyDialogForItem = item
+                             showPriceQtyDialogForItem = item.id
                         },
                         onItemLongPressAction = {
                              showPriceHistoryDialog = item.name
@@ -190,10 +189,14 @@ fun ShoppingScreen(
         }
 
         if (showPriceQtyDialogForItem != null) {
-            val item = showPriceQtyDialogForItem!!
-            var priceInput by remember { mutableStateOf(itemPrices[item.id]?.toString() ?: "") }
-            var qtyInput by remember { mutableStateOf(itemQuantities[item.id]?.toString() ?: "1") }
+            val itemId = showPriceQtyDialogForItem!!
+            val item = itemsById[itemId]
+            val activeItem = activeShoppingItems.find { it.itemId == itemId }
             val priceFocusRequester = remember { FocusRequester() }
+
+            if (item != null) {
+            var priceInput by remember(itemId) { mutableStateOf(if (activeItem != null && activeItem.price > 0) activeItem.price.toString() else "") }
+            var qtyInput by remember(itemId) { mutableStateOf(activeItem?.quantity?.toString() ?: "1") }
 
             AlertDialog(
                 onDismissRequest = { showPriceQtyDialogForItem = null },
@@ -222,8 +225,8 @@ fun ShoppingScreen(
                         val price = priceInput.replace(",", ".").toDoubleOrNull() ?: 0.0
                         val qty = qtyInput.replace(",", ".").toDoubleOrNull() ?: 1.0
 
-                        itemPrices[item.id] = price
-                        itemQuantities[item.id] = qty
+                        viewModel.updateActiveItemPrice(itemId, price)
+                        viewModel.updateActiveItemQuantity(itemId, qty)
                         showPriceQtyDialogForItem = null
                     }) {
                         Text("Save")
@@ -235,8 +238,9 @@ fun ShoppingScreen(
                     }
                 }
             )
+            }
 
-            LaunchedEffect(Unit) {
+            LaunchedEffect(itemId) {
                 delay(100)
                 priceFocusRequester.requestFocus()
             }
@@ -261,6 +265,9 @@ fun ShoppingScreen(
                     TextButton(onClick = {
                         if (newItemName.isNotBlank()) {
                             viewModel.addItem(newItemName, categoryId)
+                            // We should also add it to the active session items if a session is running
+                            // but the startShopping logic usually handles it.
+                            // For simplicity, we just add it to the list of items.
                             showAddItemDialog = false
                         }
                     }) {

@@ -50,3 +50,11 @@ data class ActiveShoppingSession(
     @PrimaryKey val id: Int = 1,
     val categoryId: Long?
 )
+
+@Entity(tableName = "active_shopping_items")
+data class ActiveShoppingItem(
+    @PrimaryKey val itemId: Long,
+    val state: String, // "EMPTY", "GREEN", "RED"
+    val price: Double,
+    val quantity: Double
+)

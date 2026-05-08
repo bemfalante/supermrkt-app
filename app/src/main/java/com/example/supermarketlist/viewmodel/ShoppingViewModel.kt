@@ -24,6 +24,9 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
     private val _activeSession = MutableStateFlow<ActiveShoppingSession?>(null)
     val activeSession: StateFlow<ActiveShoppingSession?> = _activeSession.asStateFlow()
 
+    val activeShoppingItems: StateFlow<List<ActiveShoppingItem>> = dao.getActiveShoppingItems()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     init {
         viewModelScope.launch {
             dao.getActiveSession().collect {
@@ -99,81 +102,110 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
         if (isStartingSession || activeSession.value != null) return
         isStartingSession = true
         viewModelScope.launch {
+            // 1. Set active session
             val session = ActiveShoppingSession(categoryId = categoryId)
             dao.setActiveSession(session)
+
+            // 2. Pre-populate active shopping items from the selected items
+            val currentItems = if (categoryId == null) {
+                dao.getUncategorizedItems().first()
+            } else {
+                dao.getItemsByCategory(categoryId).first()
+            }.filter { !it.isChecked }
+
+            val activeItems = currentItems.map {
+                ActiveShoppingItem(itemId = it.id, state = "EMPTY", price = 0.0, quantity = 1.0)
+            }
+            dao.insertActiveShoppingItems(activeItems)
+
             _activeSession.value = session
             isStartingSession = false
         }
     }
 
-    suspend fun finishShopping(
-        categoryId: Long?,
-        purchasedItems: List<Triple<ShoppingItem, Double, Double>>, // Item, Price, Quantity
-        foundNotBoughtItems: List<Triple<ShoppingItem, Double, Double>>,
-        notFoundItems: List<ShoppingItem>
-    ) {
-        // IMPORTANT: Immediately null out the local state to prevent UI re-navigation
-        _activeSession.value = null
-
-        val categoryName = if (categoryId == null) "Uncategorized"
-        else categories.value.find { it.id == categoryId }?.name ?: "Unknown"
-
-        val sessionId = dao.insertShoppingSession(ShoppingSession(categoryName = categoryName))
-
-        purchasedItems.forEach { (item, price, qty) ->
-            dao.insertShoppingSessionItem(
-                ShoppingSessionItem(
-                    sessionId = sessionId,
-                    itemName = item.name,
-                    price = price,
-                    quantity = qty,
-                    status = "BOUGHT"
-                )
-            )
-            dao.insertPriceHistory(
-                ItemPriceHistory(
-                    itemName = item.name,
-                    price = price,
-                    quantity = qty,
-                    categoryName = categoryName,
-                    status = "BOUGHT"
-                )
-            )
-            dao.updateItem(item.copy(isChecked = true))
+    fun updateActiveItemState(itemId: Long, state: String) {
+        viewModelScope.launch {
+            val current = activeShoppingItems.value.find { it.itemId == itemId }
+                ?: ActiveShoppingItem(itemId = itemId, state = state, price = 0.0, quantity = 1.0)
+            dao.upsertActiveShoppingItem(current.copy(state = state))
         }
-        foundNotBoughtItems.forEach { (item, price, qty) ->
-            dao.insertShoppingSessionItem(
-                ShoppingSessionItem(
-                    sessionId = sessionId,
-                    itemName = item.name,
-                    price = price,
-                    quantity = qty,
-                    status = "FOUND_NOT_BOUGHT"
-                )
-            )
-            dao.insertPriceHistory(
-                ItemPriceHistory(
-                    itemName = item.name,
-                    price = price,
-                    quantity = qty,
-                    categoryName = categoryName,
-                    status = "FOUND_NOT_BOUGHT"
-                )
-            )
-        }
-        notFoundItems.forEach { item ->
-            dao.insertShoppingSessionItem(
-                ShoppingSessionItem(
-                    sessionId = sessionId,
-                    itemName = item.name,
-                    price = 0.0,
-                    quantity = 0.0,
-                    status = "NOT_FOUND"
-                )
-            )
-        }
+    }
 
-        dao.clearActiveSession()
+    fun updateActiveItemPrice(itemId: Long, price: Double) {
+        viewModelScope.launch {
+            val current = activeShoppingItems.value.find { it.itemId == itemId }
+                ?: ActiveShoppingItem(itemId = itemId, state = "EMPTY", price = price, quantity = 1.0)
+            dao.upsertActiveShoppingItem(current.copy(price = price))
+        }
+    }
+
+    fun updateActiveItemQuantity(itemId: Long, quantity: Double) {
+        viewModelScope.launch {
+            val current = activeShoppingItems.value.find { it.itemId == itemId }
+                ?: ActiveShoppingItem(itemId = itemId, state = "EMPTY", price = 0.0, quantity = quantity)
+            dao.upsertActiveShoppingItem(current.copy(quantity = quantity))
+        }
+    }
+
+    private val finishMutex = kotlinx.coroutines.sync.Mutex()
+
+    suspend fun finishShopping() {
+        if (!finishMutex.tryLock()) return
+        try {
+            val currentSession = activeSession.value ?: return
+            val categoryId = currentSession.categoryId
+
+            // IMPORTANT: Immediately null out the local state to prevent UI re-navigation
+            _activeSession.value = null
+
+            val categoryName = if (categoryId == null) "Uncategorized"
+            else categories.value.find { it.id == categoryId }?.name ?: "Unknown"
+
+            val activeItems = activeShoppingItems.value
+            val shoppingItems = items.value.associateBy { it.id }
+
+            val sessionId = dao.insertShoppingSession(ShoppingSession(categoryName = categoryName))
+
+            activeItems.forEach { active ->
+                val item = shoppingItems[active.itemId] ?: return@forEach
+                val status = when(active.state) {
+                    "GREEN" -> "BOUGHT"
+                    "RED" -> "FOUND_NOT_BOUGHT"
+                    else -> "NOT_FOUND"
+                }
+
+                dao.insertShoppingSessionItem(
+                    ShoppingSessionItem(
+                        sessionId = sessionId,
+                        itemName = item.name,
+                        price = active.price,
+                        quantity = active.quantity,
+                        status = status
+                    )
+                )
+
+                if (status == "BOUGHT" || status == "FOUND_NOT_BOUGHT") {
+                    dao.insertPriceHistory(
+                        ItemPriceHistory(
+                            itemName = item.name,
+                            price = active.price,
+                            quantity = active.quantity,
+                            categoryName = categoryName,
+                            status = status
+                        )
+                    )
+                }
+
+                if (status == "BOUGHT") {
+                    dao.updateItem(item.copy(isChecked = true))
+                }
+            }
+
+            dao.clearActiveShoppingItems()
+            dao.clearActiveSession()
+        } finally {
+            finishMutex.unlock()
+        }
     }
 
     fun addManualSession(categoryName: String, items: List<ShoppingSessionItem>) {
@@ -199,11 +231,13 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
     fun updateShoppingSessionItem(item: ShoppingSessionItem) {
         viewModelScope.launch {
             dao.updateShoppingSessionItem(item)
-            // Also update price history if it was a price change
-            if (item.status == "BOUGHT" || item.status == "FOUND_NOT_BOUGHT") {
-                 // For simplicity, we just add a new entry or could try to update matching one.
-                 // Requirements didn't specify updating past history entries, but it's good practice.
-            }
+        }
+    }
+
+    fun deleteSession(session: ShoppingSession) {
+        viewModelScope.launch {
+            dao.deleteItemsForSession(session.id)
+            dao.deleteSession(session)
         }
     }
 
