@@ -1,6 +1,7 @@
 package com.example.supermarketlist.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -138,7 +139,11 @@ fun MainScreen(
             WelcomeScreen(modifier = Modifier.padding(padding), onManageCategories = onNavigateToCategories)
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
-                 items(items.sortedBy { it.isChecked }) { item ->
+                // To group items by category headers, we'd need the many-to-many info.
+                // For now, let's just list items sorted by state.
+                // In a real implementation we'd group items by category.
+
+                items(items.sortedBy { it.isChecked }) { item ->
                      ShoppingItemRow(
                         item = item,
                         onToggle = { viewModel.toggleItem(item) },
@@ -358,7 +363,7 @@ fun WelcomeScreen(modifier: Modifier = Modifier, onManageCategories: () -> Unit)
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ShoppingItemRow(item: ShoppingItem, onToggle: () -> Unit, onLongPress: () -> Unit) {
     Row(
@@ -418,40 +423,47 @@ fun MultiCategoryAddEditDialog(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("Categories:", style = MaterialTheme.typography.bodyMedium)
+                Text("Categories (scroll and select many):", style = MaterialTheme.typography.bodyMedium)
 
-                LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
-                    items(categories) { category ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .combinedClickable(onClick = {
-                                    selectedCategoryIds = if (selectedCategoryIds.contains(category.id)) {
-                                        selectedCategoryIds - category.id
-                                    } else {
-                                        selectedCategoryIds + category.id
+                Box(modifier = Modifier
+                    .heightIn(max = 200.dp)
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
+                    .padding(8.dp)
+                ) {
+                    LazyColumn {
+                        items(categories) { category ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .combinedClickable(onClick = {
+                                        selectedCategoryIds = if (selectedCategoryIds.contains(category.id)) {
+                                            selectedCategoryIds - category.id
+                                        } else {
+                                            selectedCategoryIds + category.id
+                                        }
+                                    })
+                                    .padding(vertical = 4.dp)
+                            ) {
+                                Checkbox(
+                                    checked = selectedCategoryIds.contains(category.id),
+                                    onCheckedChange = { checked ->
+                                        selectedCategoryIds = if (checked) {
+                                            selectedCategoryIds + category.id
+                                        } else {
+                                            selectedCategoryIds - category.id
+                                        }
                                     }
-                                })
-                        ) {
-                            Checkbox(
-                                checked = selectedCategoryIds.contains(category.id),
-                                onCheckedChange = { checked ->
-                                    selectedCategoryIds = if (checked) {
-                                        selectedCategoryIds + category.id
-                                    } else {
-                                        selectedCategoryIds - category.id
-                                    }
-                                }
-                            )
-                            Text(category.name)
+                                )
+                                Text(category.name)
+                            }
                         }
                     }
-                    item {
-                        TextButton(onClick = { showNewCategoryDialog = true }) {
-                            Text("+ Create New Category")
-                        }
-                    }
+                }
+
+                TextButton(onClick = { showNewCategoryDialog = true }) {
+                    Text("+ Create New Category")
                 }
             }
         },
@@ -571,7 +583,7 @@ fun PriceHistoryDialog(
                                 Text(dateFormat.format(Date(entry.timestamp)), style = MaterialTheme.typography.labelSmall)
                             }
                             Text(
-                                text = "R$ ${String.format("%.2f", entry.price)} (${if(entry.status == "BOUGHT") "Bought" else "Not Bought"})",
+                                text = "R$ ${String.format("%.2f", entry.price)} (Qty: ${entry.quantity})",
                                 color = if(entry.status == "BOUGHT") Color(0xFF4CAF50) else Color.Red,
                                 style = MaterialTheme.typography.bodyMedium
                             )

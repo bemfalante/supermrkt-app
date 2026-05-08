@@ -35,7 +35,7 @@ data class ShoppingSessionItem(
     val sessionId: Long,
     val itemName: String,
     val price: Double,
-    val quantity: Double,
+    val quantity: Double = 1.0,
     val status: String // "BOUGHT", "FOUND_NOT_BOUGHT", "NOT_FOUND"
 )
 
@@ -44,6 +44,7 @@ data class ItemPriceHistory(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val itemName: String,
     val price: Double,
+    val quantity: Double = 1.0,
     val categoryName: String,
     val timestamp: Long = System.currentTimeMillis(),
     val status: String

@@ -65,13 +65,16 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun addCategory(name: String, onComplete: (Long) -> Unit = {}) {
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) return
+
         viewModelScope.launch {
-            val existing = categories.value.any { it.name.equals(name, ignoreCase = true) }
+            val existing = categories.value.any { it.name.trim().replace("\\s+".toRegex(), " ").equals(trimmedName.replace("\\s+".toRegex(), " "), ignoreCase = true) }
             if (existing) {
-                Toast.makeText(getApplication(), "Category '$name' already exists", Toast.LENGTH_SHORT).show()
+                Toast.makeText(getApplication(), "Category '$trimmedName' already exists", Toast.LENGTH_SHORT).show()
                 return@launch
             }
-            val id = dao.insertCategory(Category(name = name))
+            val id = dao.insertCategory(Category(name = trimmedName))
             onComplete(id)
         }
     }
@@ -122,7 +125,15 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
                         status = "BOUGHT"
                     )
                 )
-                dao.insertPriceHistory(ItemPriceHistory(itemName = item.name, price = price, categoryName = categoryName, status = "BOUGHT"))
+                dao.insertPriceHistory(
+                    ItemPriceHistory(
+                        itemName = item.name,
+                        price = price,
+                        quantity = qty,
+                        categoryName = categoryName,
+                        status = "BOUGHT"
+                    )
+                )
                 dao.updateItem(item.copy(isChecked = true))
             }
             foundNotBoughtItems.forEach { (item, price, qty) ->
@@ -135,7 +146,15 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
                         status = "FOUND_NOT_BOUGHT"
                     )
                 )
-                dao.insertPriceHistory(ItemPriceHistory(itemName = item.name, price = price, categoryName = categoryName, status = "FOUND_NOT_BOUGHT"))
+                dao.insertPriceHistory(
+                    ItemPriceHistory(
+                        itemName = item.name,
+                        price = price,
+                        quantity = qty,
+                        categoryName = categoryName,
+                        status = "FOUND_NOT_BOUGHT"
+                    )
+                )
             }
             notFoundItems.forEach { item ->
                 dao.insertShoppingSessionItem(
@@ -150,6 +169,26 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
             }
 
             dao.clearActiveSession()
+        }
+    }
+
+    fun addManualSession(categoryName: String, items: List<ShoppingSessionItem>) {
+        viewModelScope.launch {
+            val sessionId = dao.insertShoppingSession(ShoppingSession(categoryName = categoryName))
+            items.forEach { item ->
+                dao.insertShoppingSessionItem(item.copy(sessionId = sessionId))
+                if (item.status == "BOUGHT" || item.status == "FOUND_NOT_BOUGHT") {
+                    dao.insertPriceHistory(
+                        ItemPriceHistory(
+                            itemName = item.itemName,
+                            price = item.price,
+                            quantity = item.quantity,
+                            categoryName = categoryName,
+                            status = item.status
+                        )
+                    )
+                }
+            }
         }
     }
 

@@ -10,7 +10,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,9 +39,7 @@ fun ShoppingScreen(
     onFinished: () -> Unit,
     onStartVoiceInput: () -> Unit
 ) {
-    val items by viewModel.items.collectAsState()
     val categories by viewModel.categories.collectAsState()
-
     val categoryItems by viewModel.getItemsByCategory(categoryId).collectAsState(initial = emptyList())
     val activeItems = categoryItems.filter { !it.isChecked }
 
@@ -54,6 +51,8 @@ fun ShoppingScreen(
     var showAddItemDialog by remember { mutableStateOf(false) }
     var showPriceHistoryDialog by remember { mutableStateOf<String?>(null) }
 
+    var finishing by remember { mutableStateOf(false) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -61,17 +60,21 @@ fun ShoppingScreen(
                 actions = {
                     Button(
                         onClick = {
-                            val bought = activeItems.filter { itemStates[it.id] == ItemState.GREEN }
-                                .map { Triple(it, itemPrices[it.id] ?: 0.0, itemQuantities[it.id] ?: 1.0) }
-                            val foundNotBought = activeItems.filter { itemStates[it.id] == ItemState.RED }
-                                .map { Triple(it, itemPrices[it.id] ?: 0.0, itemQuantities[it.id] ?: 1.0) }
-                            val notFound = activeItems.filter { itemStates[it.id] == null || itemStates[it.id] == ItemState.EMPTY }
+                            if (!finishing) {
+                                finishing = true
+                                val bought = activeItems.filter { itemStates[it.id] == ItemState.GREEN }
+                                    .map { Triple(it, itemPrices[it.id] ?: 0.0, itemQuantities[it.id] ?: 1.0) }
+                                val foundNotBought = activeItems.filter { itemStates[it.id] == ItemState.RED }
+                                    .map { Triple(it, itemPrices[it.id] ?: 0.0, itemQuantities[it.id] ?: 1.0) }
+                                val notFound = activeItems.filter { itemStates[it.id] == null || itemStates[it.id] == ItemState.EMPTY }
 
-                            viewModel.finishShopping(categoryId, bought, foundNotBought, notFound)
-                            onFinished()
+                                viewModel.finishShopping(categoryId, bought, foundNotBought, notFound)
+                                onFinished()
+                            }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(8.dp),
+                        enabled = !finishing
                     ) {
                         Text("Finish Shopping!", color = Color.White)
                     }
@@ -134,6 +137,11 @@ fun ShoppingScreen(
                         onLongPress = {
                             itemStates[item.id] = ItemState.RED
                             showPriceQtyDialogForItem = item
+                        },
+                        onDoubleClick = {
+                            itemStates[item.id] = ItemState.EMPTY
+                            itemPrices.remove(item.id)
+                            itemQuantities.remove(item.id)
                         },
                         onPriceLongPress = {
                              showPriceQtyDialogForItem = item
@@ -204,18 +212,41 @@ fun ShoppingScreen(
         }
 
         if (showAddItemDialog) {
-            MultiCategoryAddEditDialog(
-                title = "Add Item",
-                initialName = "",
-                initialCategoryIds = if (categoryId != null) listOf(categoryId) else emptyList(),
-                categories = categories,
-                onDismiss = { showAddItemDialog = false },
-                onConfirm = { name, catIds ->
-                    viewModel.addItem(name, catIds)
-                    showAddItemDialog = false
+            var newItemName by remember { mutableStateOf("") }
+            val focusRequester = remember { FocusRequester() }
+
+            AlertDialog(
+                onDismissRequest = { showAddItemDialog = false },
+                title = { Text("Add Item to this Category") },
+                text = {
+                    TextField(
+                        value = newItemName,
+                        onValueChange = { newItemName = it },
+                        label = { Text("Item Name") },
+                        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
+                    )
                 },
-                onAddCategory = { name, onDone -> viewModel.addCategory(name, onDone) }
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (newItemName.isNotBlank()) {
+                            viewModel.addItem(newItemName, if (categoryId != null) listOf(categoryId) else emptyList())
+                            showAddItemDialog = false
+                        }
+                    }) {
+                        Text("Add")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAddItemDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
             )
+
+            LaunchedEffect(Unit) {
+                delay(100)
+                focusRequester.requestFocus()
+            }
         }
 
         if (showPriceHistoryDialog != null) {
@@ -236,6 +267,7 @@ fun ShoppingItemRow(
     quantity: Double?,
     onToggle: () -> Unit,
     onLongPress: () -> Unit,
+    onDoubleClick: () -> Unit,
     onPriceLongPress: () -> Unit,
     onItemLongPressAction: () -> Unit
 ) {
@@ -243,7 +275,11 @@ fun ShoppingItemRow(
         modifier = Modifier
             .fillMaxWidth()
             .pointerInput(Unit) {
-                detectTapGestures(onLongPress = { onItemLongPressAction() })
+                detectTapGestures(
+                    onTap = { onToggle() },
+                    onLongPress = { onItemLongPressAction() },
+                    onDoubleTap = { onDoubleClick() }
+                )
             }
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -278,7 +314,8 @@ fun ShoppingItemRow(
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = { onToggle() },
-                        onLongPress = { onLongPress() }
+                        onLongPress = { onLongPress() },
+                        onDoubleTap = { onDoubleClick() }
                     )
                 }
         )
