@@ -8,6 +8,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,6 +34,7 @@ fun HistoryScreen(viewModel: ShoppingViewModel, onNavigateBack: () -> Unit) {
     val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
 
     var showAddSessionDialog by remember { mutableStateOf(false) }
+    var editingItem by remember { mutableStateOf<ShoppingSessionItem?>(null) }
 
     Scaffold(
         topBar = {
@@ -59,6 +61,7 @@ fun HistoryScreen(viewModel: ShoppingViewModel, onNavigateBack: () -> Unit) {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
                 items(sessions) { session ->
                     val sessionItems by viewModel.getItemsForSession(session.id).collectAsState(initial = emptyList())
+                    val totalSessionPrice = sessionItems.filter { it.status == "BOUGHT" }.sumOf { it.price * it.quantity }
 
                     Card(
                         modifier = Modifier
@@ -66,11 +69,21 @@ fun HistoryScreen(viewModel: ShoppingViewModel, onNavigateBack: () -> Unit) {
                             .padding(8.dp)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                text = "Shopping in ${session.categoryName}",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Shopping in ${session.categoryName}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Total: R$ ${String.format("%.2f", totalSessionPrice)}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                             Text(
                                 text = dateFormat.format(Date(session.timestamp)),
                                 style = MaterialTheme.typography.bodySmall
@@ -84,24 +97,24 @@ fun HistoryScreen(viewModel: ShoppingViewModel, onNavigateBack: () -> Unit) {
 
                             if (bought.isNotEmpty()) {
                                 Text("Bought:", style = MaterialTheme.typography.labelMedium, color = Color(0xFF4CAF50))
-                                bought.forEach {
-                                    Text("• ${it.itemName} (Qty: ${it.quantity}) - R$ ${String.format("%.2f", it.price * it.quantity)}", style = MaterialTheme.typography.bodySmall)
+                                bought.forEach { item ->
+                                    HistoryItemRow(item, onEdit = { editingItem = item })
                                 }
                             }
 
                             if (foundNotBought.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text("Found but not bought:", style = MaterialTheme.typography.labelMedium, color = Color.Red)
-                                foundNotBought.forEach {
-                                    Text("• ${it.itemName} (Qty: ${it.quantity}) - R$ ${String.format("%.2f", it.price * it.quantity)}", style = MaterialTheme.typography.bodySmall)
+                                foundNotBought.forEach { item ->
+                                    HistoryItemRow(item, onEdit = { editingItem = item })
                                 }
                             }
 
                             if (notFound.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text("Not found:", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
-                                notFound.forEach {
-                                    Text("• ${it.itemName}", style = MaterialTheme.typography.bodySmall)
+                                notFound.forEach { item ->
+                                    HistoryItemRow(item, onEdit = { editingItem = item })
                                 }
                             }
                         }
@@ -120,6 +133,114 @@ fun HistoryScreen(viewModel: ShoppingViewModel, onNavigateBack: () -> Unit) {
                 }
             )
         }
+
+        if (editingItem != null) {
+            EditHistoryItemDialog(
+                item = editingItem!!,
+                onDismiss = { editingItem = null },
+                onConfirm = { updatedItem ->
+                    viewModel.updateShoppingSessionItem(updatedItem)
+                    editingItem = null
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun HistoryItemRow(item: ShoppingSessionItem, onEdit: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = "• ${item.itemName} (Qty: ${item.quantity}) - R$ ${String.format("%.2f", item.price * item.quantity)}",
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.weight(1f)
+        )
+        IconButton(onClick = onEdit, modifier = Modifier.size(24.dp)) {
+            Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(16.dp))
+        }
+    }
+}
+
+@Composable
+fun EditHistoryItemDialog(
+    item: ShoppingSessionItem,
+    onDismiss: () -> Unit,
+    onConfirm: (ShoppingSessionItem) -> Unit
+) {
+    var name by remember { mutableStateOf(item.itemName) }
+    var price by remember { mutableStateOf(item.price.toString()) }
+    var qty by remember { mutableStateOf(item.quantity.toString()) }
+    var status by remember { mutableStateOf(item.status) }
+
+    val focusRequester = remember { FocusRequester() }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit History Item") },
+        text = {
+            Column {
+                TextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Item Name") },
+                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                TextField(
+                    value = price,
+                    onValueChange = { price = it },
+                    label = { Text("Price (R$)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                TextField(
+                    value = qty,
+                    onValueChange = { qty = it },
+                    label = { Text("Quantity") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = status == "BOUGHT", onClick = { status = "BOUGHT" })
+                    Text("Bought")
+                    Spacer(modifier = Modifier.width(8.dp))
+                    RadioButton(selected = status == "FOUND_NOT_BOUGHT", onClick = { status = "FOUND_NOT_BOUGHT" })
+                    Text("Found but not bought")
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (name.isNotBlank()) {
+                    onConfirm(
+                        item.copy(
+                            itemName = name,
+                            price = price.replace(",", ".").toDoubleOrNull() ?: 0.0,
+                            quantity = qty.replace(",", ".").toDoubleOrNull() ?: 1.0,
+                            status = status
+                        )
+                    )
+                }
+            }) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+
+    LaunchedEffect(Unit) {
+        delay(100)
+        focusRequester.requestFocus()
     }
 }
 
@@ -172,7 +293,10 @@ fun AddManualSessionDialog(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    if (selectedCategoryName.isNotBlank()) step = 2
+                    if (selectedCategoryName.isNotBlank()) {
+                        selectedCategoryName = selectedCategoryName.trim()
+                        step = 2
+                    }
                 }) {
                     Text("Next")
                 }

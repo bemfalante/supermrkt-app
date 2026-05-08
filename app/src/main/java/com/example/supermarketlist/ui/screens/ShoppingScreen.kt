@@ -53,10 +53,25 @@ fun ShoppingScreen(
 
     var finishing by remember { mutableStateOf(false) }
 
+    val totalPrice = remember(itemPrices, itemQuantities) {
+        itemPrices.keys.filter { itemStates[it] == ItemState.GREEN }.sumOf {
+            (itemPrices[it] ?: 0.0) * (itemQuantities[it] ?: 1.0)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Shopping") },
+                title = {
+                    Column {
+                        Text("Shopping")
+                        Text(
+                            text = "Total: R$ ${String.format("%.2f", totalPrice)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                },
                 actions = {
                     Button(
                         onClick = {
@@ -112,9 +127,22 @@ fun ShoppingScreen(
                 Text("No active items in this category")
             }
         } else {
-            val sortedItems = activeItems.sortedBy {
-                val state = itemStates[it.id] ?: ItemState.EMPTY
-                state != ItemState.EMPTY
+            // Sort: GREEN at very bottom, RED above them, EMPTY at top.
+            val sortedItems = activeItems.sortedWith { a, b ->
+                val stateA = itemStates[a.id] ?: ItemState.EMPTY
+                val stateB = itemStates[b.id] ?: ItemState.EMPTY
+
+                val weightA = when(stateA) {
+                    ItemState.EMPTY -> 0
+                    ItemState.RED -> 1
+                    ItemState.GREEN -> 2
+                }
+                val weightB = when(stateB) {
+                    ItemState.EMPTY -> 0
+                    ItemState.RED -> 1
+                    ItemState.GREEN -> 2
+                }
+                weightA.compareTo(weightB)
             }
 
             LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(bottom = 80.dp)) {
@@ -125,20 +153,17 @@ fun ShoppingScreen(
                         price = itemPrices[item.id],
                         quantity = itemQuantities[item.id],
                         onToggle = {
-                            val currentState = itemStates[item.id] ?: ItemState.EMPTY
-                            if (currentState == ItemState.GREEN) {
-                                itemStates[item.id] = ItemState.EMPTY
-                                itemPrices.remove(item.id)
-                                itemQuantities.remove(item.id)
-                            } else {
-                                showPriceQtyDialogForItem = item
-                            }
+                            // Single Click -> BOUGHT (Green)
+                            itemStates[item.id] = ItemState.GREEN
+                            showPriceQtyDialogForItem = item
                         },
                         onLongPress = {
+                            // Long Press -> FOUND NOT BOUGHT (Red)
                             itemStates[item.id] = ItemState.RED
                             showPriceQtyDialogForItem = item
                         },
                         onDoubleClick = {
+                            // Double Click -> NOT FOUND (Empty)
                             itemStates[item.id] = ItemState.EMPTY
                             itemPrices.remove(item.id)
                             itemQuantities.remove(item.id)
@@ -187,10 +212,6 @@ fun ShoppingScreen(
                         val price = priceInput.replace(",", ".").toDoubleOrNull() ?: 0.0
                         val qty = qtyInput.replace(",", ".").toDoubleOrNull() ?: 1.0
 
-                        if (itemStates[item.id] == ItemState.EMPTY || itemStates[item.id] == null) {
-                             itemStates[item.id] = ItemState.GREEN
-                        }
-
                         itemPrices[item.id] = price
                         itemQuantities[item.id] = qty
                         showPriceQtyDialogForItem = null
@@ -229,7 +250,7 @@ fun ShoppingScreen(
                 confirmButton = {
                     TextButton(onClick = {
                         if (newItemName.isNotBlank()) {
-                            viewModel.addItem(newItemName, if (categoryId != null) listOf(categoryId) else emptyList())
+                            viewModel.addItem(newItemName, categoryId)
                             showAddItemDialog = false
                         }
                     }) {
@@ -277,7 +298,7 @@ fun ShoppingItemRow(
             .pointerInput(Unit) {
                 detectTapGestures(
                     onTap = { onToggle() },
-                    onLongPress = { onItemLongPressAction() },
+                    onLongPress = { onLongPress() },
                     onDoubleTap = { onDoubleClick() }
                 )
             }

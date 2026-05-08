@@ -13,13 +13,8 @@ data class Category(
 data class ShoppingItem(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
+    val categoryId: Long?,
     val isChecked: Boolean = false
-)
-
-@Entity(tableName = "item_category_cross_ref", primaryKeys = ["itemId", "categoryId"])
-data class ItemCategoryCrossRef(
-    val itemId: Long,
-    val categoryId: Long
 )
 
 @Entity(tableName = "shopping_sessions")

@@ -61,7 +61,7 @@ fun AppNavigation() {
             if (!spokenText.isNullOrBlank()) {
                 handleVoiceInput(spokenText, categories) { itemName, categoryId ->
                     if (categoryId != null) {
-                        viewModel.addItem(itemName, listOf(categoryId))
+                        viewModel.addItem(itemName, categoryId)
                     } else {
                         voiceDetectedItemName = itemName
                         showVoiceCategoryDialog = true
@@ -72,7 +72,7 @@ fun AppNavigation() {
     }
 
     if (showVoiceCategoryDialog) {
-        var selectedCategoryId by remember(voiceDetectedItemName) { mutableStateOf<Long?>(viewModel.lastUsedCategoryIds.firstOrNull()) }
+        var selectedCategoryId by remember(voiceDetectedItemName) { mutableStateOf<Long?>(viewModel.lastUsedCategoryId) }
         var showIntentionalConfirm by remember { mutableStateOf(false) }
         var showNewCategoryDialog by remember { mutableStateOf(false) }
         var newCategoryName by remember { mutableStateOf("") }
@@ -84,7 +84,7 @@ fun AppNavigation() {
                 text = { Text("Are you sure you want to add '$voiceDetectedItemName' to the Uncategorized list?") },
                 confirmButton = {
                     TextButton(onClick = {
-                        viewModel.addItem(voiceDetectedItemName, emptyList())
+                        viewModel.addItem(voiceDetectedItemName, null)
                         showVoiceCategoryDialog = false
                         showIntentionalConfirm = false
                     }) {
@@ -117,7 +117,7 @@ fun AppNavigation() {
                 confirmButton = {
                     TextButton(onClick = {
                         if (selectedCategoryId != null) {
-                            viewModel.addItem(voiceDetectedItemName, listOf(selectedCategoryId!!))
+                            viewModel.addItem(voiceDetectedItemName, selectedCategoryId)
                             showVoiceCategoryDialog = false
                         } else {
                             showIntentionalConfirm = true

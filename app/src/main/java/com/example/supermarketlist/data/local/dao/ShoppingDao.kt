@@ -20,6 +20,12 @@ interface ShoppingDao {
     @Query("SELECT * FROM shopping_items")
     fun getAllItems(): Flow<List<ShoppingItem>>
 
+    @Query("SELECT * FROM shopping_items WHERE categoryId = :categoryId")
+    fun getItemsByCategory(categoryId: Long): Flow<List<ShoppingItem>>
+
+    @Query("SELECT * FROM shopping_items WHERE categoryId IS NULL")
+    fun getUncategorizedItems(): Flow<List<ShoppingItem>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertItem(item: ShoppingItem): Long
 
@@ -29,39 +35,15 @@ interface ShoppingDao {
     @Delete
     suspend fun deleteItem(item: ShoppingItem)
 
-    // Item-Category Relationship
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertItemCategoryCrossRef(crossRef: ItemCategoryCrossRef)
-
-    @Query("DELETE FROM item_category_cross_ref WHERE itemId = :itemId")
-    suspend fun deleteItemCategoryCrossRefs(itemId: Long)
-
-    @Query("""
-        SELECT categories.* FROM categories
-        INNER JOIN item_category_cross_ref ON categories.id = item_category_cross_ref.categoryId
-        WHERE item_category_cross_ref.itemId = :itemId
-    """)
-    fun getCategoriesForItem(itemId: Long): Flow<List<Category>>
-
-    @Query("""
-        SELECT shopping_items.* FROM shopping_items
-        INNER JOIN item_category_cross_ref ON shopping_items.id = item_category_cross_ref.itemId
-        WHERE item_category_cross_ref.categoryId = :categoryId
-    """)
-    fun getItemsByCategory(categoryId: Long): Flow<List<ShoppingItem>>
-
-    @Query("""
-        SELECT * FROM shopping_items
-        WHERE id NOT IN (SELECT itemId FROM item_category_cross_ref)
-    """)
-    fun getUncategorizedItems(): Flow<List<ShoppingItem>>
-
     // Shopping Sessions
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertShoppingSession(session: ShoppingSession): Long
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertShoppingSessionItem(item: ShoppingSessionItem)
+
+    @Update
+    suspend fun updateShoppingSessionItem(item: ShoppingSessionItem)
 
     @Query("SELECT * FROM shopping_sessions ORDER BY timestamp DESC")
     fun getAllSessions(): Flow<List<ShoppingSession>>
