@@ -138,13 +138,12 @@ fun MainScreen(
         if (items.isEmpty()) {
             WelcomeScreen(modifier = Modifier.padding(padding), onManageCategories = onNavigateToCategories)
         } else {
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
-                // Group items by category.
-                val categorized = items.groupBy { it.categoryId }
+            val categorized = items.groupBy { it.categoryId }
 
+            LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
                 categories.forEach { category ->
                     val categoryItems = categorized[category.id] ?: emptyList()
-                    item(key = "cat_${category.id}") {
+                    item(key = "header_${category.id}") {
                         CategoryHeader(category.name)
                     }
                     items(categoryItems.sortedBy { it.isChecked }, key = { "item_${it.id}" }) { item ->
@@ -159,13 +158,12 @@ fun MainScreen(
                     }
                 }
 
-                // Uncategorized items
                 val uncategorized = categorized[null] ?: emptyList()
                 if (uncategorized.isNotEmpty()) {
-                    item(key = "cat_null") {
+                    item(key = "header_uncategorized") {
                         CategoryHeader("Uncategorized")
                     }
-                    items(uncategorized.sortedBy { it.isChecked }, key = { "item_${it.id}" }) { item ->
+                    items(uncategorized.sortedBy { it.isChecked }, key = { "item_uncat_${it.id}" }) { item ->
                         ShoppingItemRow(
                             item = item,
                             onToggle = { viewModel.toggleItem(item) },
@@ -466,7 +464,6 @@ fun AddEditItemDialog(
                     .padding(8.dp)
                 ) {
                     LazyColumn {
-                        // "No Category" option
                         item {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -615,8 +612,9 @@ fun PriceHistoryDialog(
                                 Text(entry.categoryName, style = MaterialTheme.typography.bodySmall)
                                 Text(dateFormat.format(Date(entry.timestamp)), style = MaterialTheme.typography.labelSmall)
                             }
+                            val ptBr = Locale("pt", "BR")
                             Text(
-                                text = "R$ ${String.format("%.2f", entry.price)} (Qty: ${entry.quantity})",
+                                text = "R$ ${String.format(ptBr, "%.2f", entry.price)} (Qty: ${entry.quantity})",
                                 color = if(entry.status == "BOUGHT") Color(0xFF4CAF50) else Color.Red,
                                 style = MaterialTheme.typography.bodyMedium
                             )

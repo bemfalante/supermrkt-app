@@ -21,8 +21,16 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
     val items: StateFlow<List<ShoppingItem>> = dao.getAllItems()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val activeSession: StateFlow<ActiveShoppingSession?> = dao.getActiveSession()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    private val _activeSession = MutableStateFlow<ActiveShoppingSession?>(null)
+    val activeSession: StateFlow<ActiveShoppingSession?> = _activeSession.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            dao.getActiveSession().collect {
+                _activeSession.value = it
+            }
+        }
+    }
 
     val sessions: StateFlow<List<ShoppingSession>> = dao.getAllSessions()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -88,10 +96,12 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
     // Shopping Session Logic
     private var isStartingSession = false
     fun startShopping(categoryId: Long?) {
-        if (isStartingSession) return
+        if (isStartingSession || activeSession.value != null) return
         isStartingSession = true
         viewModelScope.launch {
-            dao.setActiveSession(ActiveShoppingSession(categoryId = categoryId))
+            val session = ActiveShoppingSession(categoryId = categoryId)
+            dao.setActiveSession(session)
+            _activeSession.value = session
             isStartingSession = false
         }
     }
@@ -102,6 +112,9 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
         foundNotBoughtItems: List<Triple<ShoppingItem, Double, Double>>,
         notFoundItems: List<ShoppingItem>
     ) {
+        // IMPORTANT: Immediately null out the local state to prevent UI re-navigation
+        _activeSession.value = null
+
         val categoryName = if (categoryId == null) "Uncategorized"
         else categories.value.find { it.id == categoryId }?.name ?: "Unknown"
 

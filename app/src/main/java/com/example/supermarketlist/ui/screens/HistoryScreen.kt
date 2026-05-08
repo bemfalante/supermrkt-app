@@ -78,8 +78,9 @@ fun HistoryScreen(viewModel: ShoppingViewModel, onNavigateBack: () -> Unit) {
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
+                                val ptBr = Locale("pt", "BR")
                                 Text(
-                                    text = "Total: R$ ${String.format("%.2f", totalSessionPrice)}",
+                                    text = "Total: R$ ${String.format(ptBr, "%.2f", totalSessionPrice)}",
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -154,8 +155,9 @@ fun HistoryItemRow(item: ShoppingSessionItem, onEdit: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
+        val ptBr = Locale("pt", "BR")
         Text(
-            text = "• ${item.itemName} (Qty: ${item.quantity}) - R$ ${String.format("%.2f", item.price * item.quantity)}",
+            text = "• ${item.itemName} (Qty: ${item.quantity}) - R$ ${String.format(ptBr, "%.2f", item.price * item.quantity)}",
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.weight(1f)
         )

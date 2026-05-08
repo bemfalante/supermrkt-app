@@ -1,5 +1,6 @@
 package com.example.supermarketlist.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -29,6 +30,7 @@ import com.example.supermarketlist.data.local.entity.ShoppingItem
 import com.example.supermarketlist.viewmodel.ShoppingViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 enum class ItemState { EMPTY, GREEN, RED }
 
@@ -55,10 +57,14 @@ fun ShoppingScreen(
     var finishing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    val totalPrice = remember(itemPrices, itemQuantities) {
-        itemPrices.keys.filter { itemStates[it] == ItemState.GREEN }.sumOf {
-            (itemPrices[it] ?: 0.0) * (itemQuantities[it] ?: 1.0)
-        }
+    val ptBr = remember { Locale("pt", "BR") }
+    val totalPrice = itemPrices.keys.filter { itemStates[it] == ItemState.GREEN }.sumOf {
+        (itemPrices[it] ?: 0.0) * (itemQuantities[it] ?: 1.0)
+    }
+
+    // Never close except via Finish button
+    BackHandler {
+        // Do nothing to prevent system back navigation
     }
 
     Scaffold(
@@ -68,7 +74,7 @@ fun ShoppingScreen(
                     Column {
                         Text("Shopping")
                         Text(
-                            text = "Total: R$ ${String.format("%.2f", totalPrice)}",
+                            text = "Total: R$ ${String.format(ptBr, "%.2f", totalPrice)}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -313,8 +319,9 @@ fun ShoppingItemRow(
 
         if (price != null) {
             val total = price * (quantity ?: 1.0)
+            val ptBr = Locale("pt", "BR")
             Text(
-                text = "R$ ${String.format("%.2f", total)}",
+                text = "R$ ${String.format(ptBr, "%.2f", total)}",
                 modifier = Modifier
                     .padding(horizontal = 8.dp)
                     .pointerInput(Unit) {
