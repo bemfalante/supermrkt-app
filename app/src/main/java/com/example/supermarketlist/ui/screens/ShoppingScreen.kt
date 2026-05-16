@@ -1,5 +1,6 @@
 package com.example.supermarketlist.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -10,7 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,8 +30,8 @@ import com.example.supermarketlist.R
 import com.example.supermarketlist.data.local.entity.ShoppingItem
 import com.example.supermarketlist.viewmodel.ShoppingViewModel
 import kotlinx.coroutines.delay
-
-enum class ItemState { EMPTY, GREEN, RED }
+import kotlinx.coroutines.launch
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,38 +41,57 @@ fun ShoppingScreen(
     onFinished: () -> Unit,
     onStartVoiceInput: () -> Unit
 ) {
-    val items by viewModel.items.collectAsState()
-    val categories by viewModel.categories.collectAsState()
+    val categoryItemsFlow = viewModel.getItemsByCategory(categoryId).collectAsState(initial = emptyList())
+    val categoryItems = categoryItemsFlow.value
+    val activeShoppingItems by viewModel.activeShoppingItems.collectAsState()
+    val itemsById = categoryItems.associateBy { it.id }
 
-    val categoryItems by viewModel.getItemsByCategory(categoryId).collectAsState(initial = emptyList())
-    val activeItems = categoryItems.filter { !it.isChecked }
+    val activeItems = activeShoppingItems.filter { itemsById.containsKey(it.itemId) }
 
-    val itemStates = remember { mutableStateMapOf<Long, ItemState>() }
-    val itemPrices = remember { mutableStateMapOf<Long, Double>() }
-    val itemQuantities = remember { mutableStateMapOf<Long, Double>() }
-
-    var showPriceQtyDialogForItem by remember { mutableStateOf<ShoppingItem?>(null) }
+    var showPriceQtyDialogForItem by remember { mutableStateOf<Long?>(null) }
     var showAddItemDialog by remember { mutableStateOf(false) }
     var showPriceHistoryDialog by remember { mutableStateOf<String?>(null) }
+    var showPaymentPrompt by remember { mutableStateOf(false) }
+
+    var finishing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    val ptBr = remember { Locale("pt", "BR") }
+    val totalPrice = activeItems.filter { it.state == "GREEN" }.sumOf { it.price * it.quantity }
+
+    BackHandler {
+        // Do nothing to prevent system back navigation
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.newItemAddedEvent.collect { newId ->
+            showPriceQtyDialogForItem = newId
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Shopping") },
+                title = {
+                    Column {
+                        Text("Shopping")
+                        Text(
+                            text = "Total: R$ ${String.format(ptBr, "%.2f", totalPrice)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                },
                 actions = {
                     Button(
                         onClick = {
-                            val bought = activeItems.filter { itemStates[it.id] == ItemState.GREEN }
-                                .map { Triple(it, itemPrices[it.id] ?: 0.0, itemQuantities[it.id] ?: 1.0) }
-                            val foundNotBought = activeItems.filter { itemStates[it.id] == ItemState.RED }
-                                .map { Triple(it, itemPrices[it.id] ?: 0.0, itemQuantities[it.id] ?: 1.0) }
-                            val notFound = activeItems.filter { itemStates[it.id] == null || itemStates[it.id] == ItemState.EMPTY }
-
-                            viewModel.finishShopping(categoryId, bought, foundNotBought, notFound)
-                            onFinished()
+                            if (!finishing) {
+                                showPaymentPrompt = true
+                            }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(8.dp),
+                        enabled = !finishing
                     ) {
                         Text("Finish Shopping!", color = Color.White)
                     }
@@ -109,37 +129,78 @@ fun ShoppingScreen(
                 Text("No active items in this category")
             }
         } else {
-            val sortedItems = activeItems.sortedBy {
-                val state = itemStates[it.id] ?: ItemState.EMPTY
-                state != ItemState.EMPTY
+            val sortedItems = activeItems.sortedWith { a, b ->
+                val nameA = itemsById[a.itemId]?.name ?: ""
+                val nameB = itemsById[b.itemId]?.name ?: ""
+                val stateA = a.state
+                val stateB = b.state
+                val weightA = when(stateA) {
+                    "EMPTY" -> 0
+                    "NOT_FOUND_X" -> 1
+                    "RED" -> 2
+                    "GREEN" -> 3
+                    else -> 0
+                }
+                val weightB = when(stateB) {
+                    "EMPTY" -> 0
+                    "NOT_FOUND_X" -> 1
+                    "RED" -> 2
+                    "GREEN" -> 3
+                    else -> 0
+                }
+                if (weightA != weightB) weightA.compareTo(weightB)
+                else nameA.lowercase().compareTo(nameB.lowercase())
             }
 
             LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(bottom = 80.dp)) {
-                items(sortedItems, key = { it.id }) { item ->
-                    ShoppingItemRow(
-                        item = item,
-                        state = itemStates[item.id] ?: ItemState.EMPTY,
-                        price = itemPrices[item.id],
-                        quantity = itemQuantities[item.id],
-                        onToggle = {
-                            val currentState = itemStates[item.id] ?: ItemState.EMPTY
-                            if (currentState == ItemState.GREEN) {
-                                itemStates[item.id] = ItemState.EMPTY
-                                itemPrices.remove(item.id)
-                                itemQuantities.remove(item.id)
-                            } else {
-                                showPriceQtyDialogForItem = item
+                items(sortedItems, key = { it.itemId }) { activeItem ->
+                    val item = itemsById[activeItem.itemId] ?: return@items
+
+                    val dismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = {
+                            if (it == SwipeToDismissBoxValue.EndToStart) {
+                                viewModel.updateActiveItemState(item.id, "NOT_FOUND_X")
+                            }
+                            false
+                        }
+                    )
+
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        backgroundContent = {
+                            val color = if (dismissState.dismissDirection == SwipeToDismissBoxValue.EndToStart) Color.Red else Color.Transparent
+                            Box(
+                                modifier = Modifier.fillMaxSize().background(color).padding(horizontal = 20.dp),
+                                contentAlignment = Alignment.CenterEnd
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "Not Found", tint = Color.White)
                             }
                         },
-                        onLongPress = {
-                            itemStates[item.id] = ItemState.RED
-                            showPriceQtyDialogForItem = item
-                        },
-                        onPriceLongPress = {
-                             showPriceQtyDialogForItem = item
-                        },
-                        onItemLongPressAction = {
-                             showPriceHistoryDialog = item.name
+                        enableDismissFromStartToEnd = false,
+                        content = {
+                            ShoppingItemRow(
+                                item = item,
+                                state = activeItem.state,
+                                price = if (activeItem.price > 0) activeItem.price else null,
+                                quantity = activeItem.quantity,
+                                onToggle = {
+                                    viewModel.updateActiveItemState(item.id, "GREEN")
+                                    showPriceQtyDialogForItem = item.id
+                                },
+                                onLongPress = {
+                                    viewModel.updateActiveItemState(item.id, "RED")
+                                    showPriceQtyDialogForItem = item.id
+                                },
+                                onDoubleClick = {
+                                    viewModel.resetActiveItem(item.id)
+                                },
+                                onPriceLongPress = {
+                                     showPriceQtyDialogForItem = item.id
+                                },
+                                onItemLongPressAction = {
+                                     showPriceHistoryDialog = item.name
+                                }
+                            )
                         }
                     )
                 }
@@ -147,74 +208,128 @@ fun ShoppingScreen(
         }
 
         if (showPriceQtyDialogForItem != null) {
-            val item = showPriceQtyDialogForItem!!
-            var priceInput by remember { mutableStateOf(itemPrices[item.id]?.toString() ?: "") }
-            var qtyInput by remember { mutableStateOf(itemQuantities[item.id]?.toString() ?: "1") }
+            val itemId = showPriceQtyDialogForItem!!
+            val item = itemsById[itemId]
+            val activeItem = activeShoppingItems.find { it.itemId == itemId }
             val priceFocusRequester = remember { FocusRequester() }
 
-            AlertDialog(
-                onDismissRequest = { showPriceQtyDialogForItem = null },
-                title = { Text("Details: ${item.name}") },
-                text = {
-                    Column {
-                        TextField(
-                            value = priceInput,
-                            onValueChange = { priceInput = it },
-                            label = { Text("Price (R$)") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.fillMaxWidth().focusRequester(priceFocusRequester)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        TextField(
-                            value = qtyInput,
-                            onValueChange = { qtyInput = it },
-                            label = { Text("Quantity") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        val price = priceInput.replace(",", ".").toDoubleOrNull() ?: 0.0
-                        val qty = qtyInput.replace(",", ".").toDoubleOrNull() ?: 1.0
+            if (item != null) {
+                var priceInput by remember(itemId) { mutableStateOf(if (activeItem != null && activeItem.price > 0) activeItem.price.toString() else "") }
+                var qtyInput by remember(itemId) { mutableStateOf(activeItem?.quantity?.toString() ?: "1") }
 
-                        if (itemStates[item.id] == ItemState.EMPTY || itemStates[item.id] == null) {
-                             itemStates[item.id] = ItemState.GREEN
+                AlertDialog(
+                    onDismissRequest = { showPriceQtyDialogForItem = null },
+                    title = { Text("Details: ${item.name}") },
+                    text = {
+                        Column {
+                            TextField(
+                                value = priceInput,
+                                onValueChange = { priceInput = it },
+                                label = { Text("Price (R$)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                modifier = Modifier.fillMaxWidth().focusRequester(priceFocusRequester)
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            TextField(
+                                value = qtyInput,
+                                onValueChange = { qtyInput = it },
+                                label = { Text("Quantity") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
-
-                        itemPrices[item.id] = price
-                        itemQuantities[item.id] = qty
-                        showPriceQtyDialogForItem = null
-                    }) {
-                        Text("Save")
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            val price = priceInput.replace(",", ".").toDoubleOrNull() ?: 0.0
+                            val qty = qtyInput.replace(",", ".").toDoubleOrNull() ?: 1.0
+                            viewModel.updateActiveItemDetails(itemId, price, qty)
+                            showPriceQtyDialogForItem = null
+                        }) {
+                            Text("Save")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showPriceQtyDialogForItem = null }) {
+                            Text("Cancel")
+                        }
                     }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showPriceQtyDialogForItem = null }) {
-                        Text("Cancel")
-                    }
-                }
-            )
-
-            LaunchedEffect(Unit) {
+                )
+            }
+            LaunchedEffect(itemId) {
                 delay(100)
                 priceFocusRequester.requestFocus()
             }
         }
 
         if (showAddItemDialog) {
-            MultiCategoryAddEditDialog(
-                title = "Add Item",
-                initialName = "",
-                initialCategoryIds = if (categoryId != null) listOf(categoryId) else emptyList(),
-                categories = categories,
-                onDismiss = { showAddItemDialog = false },
-                onConfirm = { name, catIds ->
-                    viewModel.addItem(name, catIds)
-                    showAddItemDialog = false
+            var newItemName by remember { mutableStateOf("") }
+            val focusRequester = remember { FocusRequester() }
+
+            AlertDialog(
+                onDismissRequest = { showAddItemDialog = false },
+                title = { Text("Add Item to this Category") },
+                text = {
+                    TextField(
+                        value = newItemName,
+                        onValueChange = { newItemName = it },
+                        label = { Text("Item Name") },
+                        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
+                    )
                 },
-                onAddCategory = { name, onDone -> viewModel.addCategory(name, onDone) }
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (newItemName.isNotBlank()) {
+                            viewModel.addItem(newItemName, if (categoryId != null) listOf(categoryId) else emptyList())
+                            showAddItemDialog = false
+                        }
+                    }) {
+                        Text("Add")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAddItemDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+            LaunchedEffect(Unit) {
+                delay(100)
+                focusRequester.requestFocus()
+            }
+        }
+
+        if (showPaymentPrompt) {
+            AlertDialog(
+                onDismissRequest = { showPaymentPrompt = false },
+                title = { Text("Payment Method") },
+                text = { Text("How did you pay for this shopping?") },
+                confirmButton = {
+                    Row {
+                        Button(onClick = {
+                            finishing = true
+                            showPaymentPrompt = false
+                            scope.launch {
+                                viewModel.finishShopping("MONEY")
+                                onFinished()
+                            }
+                        }) { Text("Money") }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(onClick = {
+                            finishing = true
+                            showPaymentPrompt = false
+                            scope.launch {
+                                viewModel.finishShopping("CARD")
+                                onFinished()
+                            }
+                        }) { Text("Card") }
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showPaymentPrompt = false }) {
+                        Text("Cancel")
+                    }
+                }
             )
         }
 
@@ -231,11 +346,12 @@ fun ShoppingScreen(
 @Composable
 fun ShoppingItemRow(
     item: ShoppingItem,
-    state: ItemState,
+    state: String,
     price: Double?,
     quantity: Double?,
     onToggle: () -> Unit,
     onLongPress: () -> Unit,
+    onDoubleClick: () -> Unit,
     onPriceLongPress: () -> Unit,
     onItemLongPressAction: () -> Unit
 ) {
@@ -243,44 +359,44 @@ fun ShoppingItemRow(
         modifier = Modifier
             .fillMaxWidth()
             .pointerInput(Unit) {
-                detectTapGestures(onLongPress = { onItemLongPressAction() })
+                detectTapGestures(
+                    onTap = { onToggle() },
+                    onLongPress = { onLongPress() },
+                    onDoubleTap = { onDoubleClick() }
+                )
             }
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(item.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-
         if (price != null) {
             val total = price * (quantity ?: 1.0)
+            val ptBr = Locale("pt", "BR")
             Text(
-                text = "R$ ${String.format("%.2f", total)}",
-                modifier = Modifier
-                    .padding(horizontal = 8.dp)
-                    .pointerInput(Unit) {
-                        detectTapGestures(onLongPress = { onPriceLongPress() })
-                    },
+                text = "R$ ${String.format(ptBr, "%.2f", total)}",
+                modifier = Modifier.padding(horizontal = 8.dp),
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
         }
-
         Box(
             modifier = Modifier
                 .size(32.dp)
                 .clip(CircleShape)
                 .background(
                     when (state) {
-                        ItemState.EMPTY -> Color.LightGray.copy(alpha = 0.3f)
-                        ItemState.GREEN -> Color(0xFF4CAF50)
-                        ItemState.RED -> Color.Red
+                        "EMPTY" -> Color.LightGray.copy(alpha = 0.3f)
+                        "GREEN" -> Color(0xFF4CAF50)
+                        "RED" -> Color.Red
+                        "NOT_FOUND_X" -> Color.Red.copy(alpha = 0.5f)
+                        else -> Color.LightGray.copy(alpha = 0.3f)
                     }
-                )
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = { onToggle() },
-                        onLongPress = { onLongPress() }
-                    )
-                }
-        )
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (state == "NOT_FOUND_X") {
+                Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+            }
+        }
     }
 }

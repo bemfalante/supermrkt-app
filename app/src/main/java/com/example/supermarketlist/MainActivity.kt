@@ -12,10 +12,14 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -72,7 +76,9 @@ fun AppNavigation() {
     }
 
     if (showVoiceCategoryDialog) {
-        var selectedCategoryId by remember(voiceDetectedItemName) { mutableStateOf<Long?>(viewModel.lastUsedCategoryIds.firstOrNull()) }
+        var selectedCategoryIds by remember(voiceDetectedItemName) {
+            mutableStateOf(if (viewModel.lastUsedCategoryId != null) listOf(viewModel.lastUsedCategoryId!!) else emptyList())
+        }
         var showIntentionalConfirm by remember { mutableStateOf(false) }
         var showNewCategoryDialog by remember { mutableStateOf(false) }
         var newCategoryName by remember { mutableStateOf("") }
@@ -106,18 +112,24 @@ fun AppNavigation() {
                         Text("Item: $voiceDetectedItemName")
                         Spacer(modifier = Modifier.height(8.dp))
                         Text("Select Category (Optional):")
-                        CategoryDropdownWithNone(
-                            categories = categories,
-                            selectedCategoryId = selectedCategoryId,
-                            onCategorySelected = { selectedCategoryId = it },
-                            onAddNewCategory = { showNewCategoryDialog = true }
+                        CategoryMultiSelectDropdown(
+                            allCategories = categories,
+                            selectedIds = selectedCategoryIds,
+                            onToggle = { id ->
+                                selectedCategoryIds = if (selectedCategoryIds.contains(id)) {
+                                    selectedCategoryIds - id
+                                } else {
+                                    selectedCategoryIds + id
+                                }
+                            },
+                            onAddNew = { showNewCategoryDialog = true }
                         )
                     }
                 },
                 confirmButton = {
                     TextButton(onClick = {
-                        if (selectedCategoryId != null) {
-                            viewModel.addItem(voiceDetectedItemName, listOf(selectedCategoryId!!))
+                        if (selectedCategoryIds.isNotEmpty()) {
+                            viewModel.addItem(voiceDetectedItemName, selectedCategoryIds)
                             showVoiceCategoryDialog = false
                         } else {
                             showIntentionalConfirm = true
@@ -149,7 +161,7 @@ fun AppNavigation() {
                     TextButton(onClick = {
                         if (newCategoryName.isNotBlank()) {
                             viewModel.addCategory(newCategoryName) { newId ->
-                                selectedCategoryId = newId
+                                selectedCategoryIds = selectedCategoryIds + newId
                             }
                             newCategoryName = ""
                             showNewCategoryDialog = false
@@ -187,7 +199,9 @@ fun AppNavigation() {
                 onNavigateToCategories = { navController.navigate("categories") },
                 onNavigateToHistory = { navController.navigate("history") },
                 onStartShopping = { catId ->
-                    navController.navigate("shopping/${catId ?: -1L}")
+                    if (navController.currentDestination?.route?.startsWith("shopping") != true) {
+                        navController.navigate("shopping/${catId ?: -1L}")
+                    }
                 },
                 onStartVoiceInput = {
                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
@@ -232,42 +246,56 @@ fun AppNavigation() {
 }
 
 @Composable
-fun CategoryDropdownWithNone(
-    categories: List<Category>,
-    selectedCategoryId: Long?,
-    onCategorySelected: (Long?) -> Unit,
-    onAddNewCategory: () -> Unit
+fun CategoryMultiSelectDropdown(
+    allCategories: List<Category>,
+    selectedIds: List<Long>,
+    onToggle: (Long) -> Unit,
+    onAddNew: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val selectedCategory = categories.find { it.id == selectedCategoryId }
 
-    Box {
-        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
-            Text(selectedCategory?.name ?: "No Category")
+    Box(modifier = Modifier.fillMaxWidth()) {
+        OutlinedButton(
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            val text = if (selectedIds.isEmpty()) "Uncategorized"
+                      else allCategories.filter { selectedIds.contains(it.id) }.joinToString { it.name }
+            Text(text, maxLines = 1, modifier = Modifier.weight(1f), textAlign = TextAlign.Start)
+            Icon(Icons.Default.ArrowDropDown, null)
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(
-                text = { Text("None") },
-                onClick = {
-                    onCategorySelected(null)
-                    expanded = false
-                }
-            )
-            categories.forEach { category ->
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.fillMaxWidth(0.8f).heightIn(max = 300.dp)
+        ) {
+            allCategories.forEach { category ->
                 DropdownMenuItem(
-                    text = { Text(category.name) },
-                    onClick = {
-                        onCategorySelected(category.id)
-                        expanded = false
-                    }
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = selectedIds.contains(category.id), onCheckedChange = null)
+                            Text(category.name)
+                        }
+                    },
+                    onClick = { onToggle(category.id) }
                 )
             }
+            DropdownMenuItem(
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = selectedIds.isEmpty(), onCheckedChange = null)
+                        Text("Uncategorized")
+                    }
+                },
+                onClick = { /* In many-to-many, empty list means uncategorized */ }
+            )
             HorizontalDivider()
             DropdownMenuItem(
                 text = { Text("+ Create New Category", color = MaterialTheme.colorScheme.primary) },
                 onClick = {
-                    onAddNewCategory()
                     expanded = false
+                    onAddNew()
                 }
             )
         }
