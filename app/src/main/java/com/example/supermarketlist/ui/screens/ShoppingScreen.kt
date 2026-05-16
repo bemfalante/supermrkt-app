@@ -44,15 +44,23 @@ fun ShoppingScreen(
     val allItems by viewModel.items.collectAsState()
     val activeShoppingItems by viewModel.activeShoppingItems.collectAsState()
 
-    // 1.8-4 fix: correctly filter items that belong to the current shopping category
+    // 1.10 fix: Ensure robust filtering for shopping session items
     val activeItems = remember(allItems, activeShoppingItems, categoryId) {
-        activeShoppingItems.filter { active ->
-            val itemWithCats = allItems.find { it.item.id == active.itemId }
-            if (itemWithCats == null) return@filter false
+        if (allItems.isEmpty() || activeShoppingItems.isEmpty()) {
+            emptyList()
+        } else {
+            val itemMap = allItems.associateBy { it.item.id }
+            activeShoppingItems.filter { active ->
+                val itemWithCats = itemMap[active.itemId]
+                if (itemWithCats == null) return@filter false
 
-            val catIds = itemWithCats.categories.map { it.id }
-            if (categoryId == null) catIds.isEmpty()
-            else catIds.contains(categoryId)
+                val catIds = itemWithCats.categories.map { it.id }
+                if (categoryId == null) {
+                    catIds.isEmpty()
+                } else {
+                    catIds.contains(categoryId)
+                }
+            }
         }
     }
 

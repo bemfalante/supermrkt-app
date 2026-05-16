@@ -146,7 +146,7 @@ fun MainScreen(
                                 initialCategoryIdsForAdd = listOf(category.id)
                                 showAddItemDialog = true
                             },
-                            onStartShopping = { onStartShopping(category.id) }
+                            onStartShopping = { viewModel.startShopping(category.id) }
                         )
                     }
                     val categoryItems = items.filter { it.categories.any { cat -> cat.id == category.id } }
@@ -171,7 +171,7 @@ fun MainScreen(
                                 initialCategoryIdsForAdd = emptyList()
                                 showAddItemDialog = true
                             },
-                            onStartShopping = { onStartShopping(null) }
+                            onStartShopping = { viewModel.startShopping(null) }
                         )
                     }
                     items(uncategorized, key = { "uncat_item_${it.item.id}" }) { itemWithCats ->

@@ -154,6 +154,9 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
         if (isStartingSession || activeSession.value != null) return
         isStartingSession = true
         viewModelScope.launch {
+            // 0. Clear any stale active items first
+            dao.clearActiveShoppingItems()
+
             // 1. Set active session
             val session = ActiveShoppingSession(categoryId = categoryId)
             dao.setActiveSession(session)
