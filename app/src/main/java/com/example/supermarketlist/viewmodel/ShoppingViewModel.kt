@@ -9,6 +9,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.supermarketlist.data.local.database.ShoppingDatabase
 import com.example.supermarketlist.data.local.entity.*
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -18,7 +19,18 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
     val categories: StateFlow<List<Category>> = dao.getAllCategories()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val items: StateFlow<List<ShoppingItem>> = dao.getAllItems()
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val items: StateFlow<List<ShoppingItemWithCategoryIds>> = dao.getAllItems()
+        .flatMapLatest { itemList ->
+            val flows = itemList.map { item ->
+                flow {
+                    val catIds = dao.getCategoryIdsForItem(item.id)
+                    emit(ShoppingItemWithCategoryIds(item, catIds))
+                }
+            }
+            if (flows.isEmpty()) flowOf(emptyList())
+            else combine(flows) { it.toList() }
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _activeSession = MutableStateFlow<ActiveShoppingSession?>(null)
@@ -44,17 +56,23 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
     var lastUsedCategoryId by mutableStateOf<Long?>(null)
         private set
 
-    fun addItem(name: String, categoryId: Long?, onAdded: (Long) -> Unit = {}) {
-        lastUsedCategoryId = categoryId
+    fun addItem(name: String, categoryIds: List<Long>, onAdded: (Long) -> Unit = {}) {
+        if (categoryIds.isNotEmpty()) {
+            lastUsedCategoryId = categoryIds.last()
+        }
         viewModelScope.launch {
-            val id = dao.insertItem(ShoppingItem(name = name, categoryId = categoryId))
+            val id = dao.insertItem(ShoppingItem(name = name))
+            categoryIds.forEach { catId ->
+                dao.insertItemCategoryCrossRef(ItemCategoryCrossRef(itemId = id, categoryId = catId))
+            }
 
-            // If we are currently in a shopping session for this category (or uncategorized), add it to the active items
+            // If we are currently in a shopping session and the new item matches the category
             activeSession.value?.let { session ->
-                if (session.categoryId == categoryId) {
-                    dao.upsertActiveShoppingItem(
-                        ActiveShoppingItem(itemId = id, state = "GREEN", price = 0.0, quantity = 1.0)
-                    )
+                if (session.categoryId == null && categoryIds.isEmpty()) {
+                    dao.upsertActiveShoppingItem(ActiveShoppingItem(itemId = id, state = "GREEN", price = 0.0, quantity = 1.0))
+                    _newItemAddedEvent.emit(id)
+                } else if (session.categoryId != null && categoryIds.contains(session.categoryId)) {
+                    dao.upsertActiveShoppingItem(ActiveShoppingItem(itemId = id, state = "GREEN", price = 0.0, quantity = 1.0))
                     _newItemAddedEvent.emit(id)
                 }
             }
@@ -62,11 +80,18 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun updateItem(item: ShoppingItem) {
-        lastUsedCategoryId = item.categoryId
+    fun updateItem(item: ShoppingItem, categoryIds: List<Long>) {
         viewModelScope.launch {
             dao.updateItem(item)
+            dao.deleteItemCategoryCrossRefs(item.id)
+            categoryIds.forEach { catId ->
+                dao.insertItemCategoryCrossRef(ItemCategoryCrossRef(itemId = item.id, categoryId = catId))
+            }
         }
+    }
+
+    suspend fun getCategoryIdsForItem(itemId: Long): List<Long> {
+        return dao.getCategoryIdsForItem(itemId)
     }
 
     fun toggleItem(item: ShoppingItem) {
@@ -91,7 +116,7 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
                 Toast.makeText(getApplication(), "Category '$trimmedName' already exists", Toast.LENGTH_SHORT).show()
                 return@launch
             }
-            val id = dao.insertCategory(Category(name = trimmedName))
+            val id = dao.insertCategory(Category(name = trimmedName, displayOrder = categories.value.size))
             onComplete(id)
         }
     }
@@ -99,6 +124,14 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
     fun deleteCategory(category: Category) {
         viewModelScope.launch {
             dao.deleteCategory(category)
+        }
+    }
+
+    fun updateCategoryOrder(orderedCategories: List<Category>) {
+        viewModelScope.launch {
+            orderedCategories.forEachIndexed { index, category ->
+                dao.updateCategory(category.copy(displayOrder = index))
+            }
         }
     }
 
@@ -161,7 +194,7 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
 
     private val finishMutex = kotlinx.coroutines.sync.Mutex()
 
-    suspend fun finishShopping() {
+    suspend fun finishShopping(paymentMethod: String) {
         if (!finishMutex.tryLock()) return
         try {
             val currentSession = activeSession.value ?: return
@@ -185,6 +218,7 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
                 val status = when(active.state) {
                     "GREEN" -> "BOUGHT"
                     "RED" -> "FOUND_NOT_BOUGHT"
+                    "NOT_FOUND_X" -> "NOT_FOUND"
                     else -> "NOT_FOUND"
                 }
 
@@ -216,7 +250,7 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
             }
 
             dao.completeShoppingSession(
-                session = ShoppingSession(categoryName = categoryName),
+                session = ShoppingSession(categoryName = categoryName, paymentMethod = paymentMethod),
                 sessionItems = sessionItems,
                 priceHistories = priceHistories,
                 itemsToMarkChecked = itemsToMarkChecked
@@ -226,9 +260,9 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun addManualSession(categoryName: String, items: List<ShoppingSessionItem>) {
+    fun addManualSession(categoryName: String, paymentMethod: String, items: List<ShoppingSessionItem>) {
         viewModelScope.launch {
-            val sessionId = dao.insertShoppingSession(ShoppingSession(categoryName = categoryName))
+            val sessionId = dao.insertShoppingSession(ShoppingSession(categoryName = categoryName, paymentMethod = paymentMethod))
             items.forEach { item ->
                 dao.insertShoppingSessionItem(item.copy(sessionId = sessionId))
                 if (item.status == "BOUGHT" || item.status == "FOUND_NOT_BOUGHT") {
@@ -252,10 +286,24 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun updateShoppingSessionPayment(sessionId: Long, paymentMethod: String) {
+        viewModelScope.launch {
+            dao.updateShoppingSessionPayment(sessionId, paymentMethod)
+        }
+    }
+
     fun deleteSession(session: ShoppingSession) {
         viewModelScope.launch {
             dao.deleteItemsForSession(session.id)
             dao.deleteSession(session)
+        }
+    }
+
+    fun cancelShopping() {
+        viewModelScope.launch {
+            dao.clearActiveShoppingItems()
+            dao.clearActiveSession()
+            _activeSession.value = null
         }
     }
 

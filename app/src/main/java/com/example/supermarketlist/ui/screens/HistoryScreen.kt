@@ -92,16 +92,37 @@ fun HistoryScreen(viewModel: ShoppingViewModel, onNavigateBack: () -> Unit) {
                                     Icon(Icons.Default.Delete, contentDescription = "Delete Session", tint = Color.Red)
                                 }
                             }
-                            Text(
-                                text = dateFormat.format(Date(session.timestamp)),
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = dateFormat.format(Date(session.timestamp)),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Text(
+                                    text = "Paid via: ${session.paymentMethod}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
 
                             Spacer(modifier = Modifier.height(8.dp))
 
                             val bought = sessionItems.filter { it.status == "BOUGHT" }
                             val foundNotBought = sessionItems.filter { it.status == "FOUND_NOT_BOUGHT" }
-                            val notFound = sessionItems.filter { it.status == "NOT_FOUND" }
+                            val notFound = sessionItems.filter { it.status == "NOT_FOUND" || it.status == "NOT_FOUND_X" }
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Payment: ", style = MaterialTheme.typography.bodySmall)
+                                AssistChip(
+                                    onClick = {
+                                        val next = if (session.paymentMethod == "MONEY") "CARD" else "MONEY"
+                                        viewModel.updateShoppingSessionPayment(session.id, next)
+                                    },
+                                    label = { Text(session.paymentMethod) }
+                                )
+                            }
 
                             if (bought.isNotEmpty()) {
                                 Text("Bought:", style = MaterialTheme.typography.labelMedium, color = Color(0xFF4CAF50))
@@ -135,8 +156,8 @@ fun HistoryScreen(viewModel: ShoppingViewModel, onNavigateBack: () -> Unit) {
             AddManualSessionDialog(
                 categories = categories,
                 onDismiss = { showAddSessionDialog = false },
-                onConfirm = { categoryName, items ->
-                    viewModel.addManualSession(categoryName, items)
+                onConfirm = { categoryName, paymentMethod, items ->
+                    viewModel.addManualSession(categoryName, paymentMethod, items)
                     showAddSessionDialog = false
                 }
             )
@@ -257,11 +278,12 @@ fun EditHistoryItemDialog(
 fun AddManualSessionDialog(
     categories: List<Category>,
     onDismiss: () -> Unit,
-    onConfirm: (String, List<ShoppingSessionItem>) -> Unit
+    onConfirm: (String, String, List<ShoppingSessionItem>) -> Unit
 ) {
     var selectedCategoryName by remember { mutableStateOf("") }
+    var paymentMethod by remember { mutableStateOf("MONEY") }
     val sessionItems = remember { mutableStateListOf<ShoppingSessionItem>() }
-    var step by remember { mutableIntStateOf(1) } // 1: Category, 2: Items
+    var step by remember { mutableIntStateOf(1) } // 1: Category, 2: Payment, 3: Items
 
     if (step == 1) {
         AlertDialog(
@@ -324,6 +346,32 @@ fun AddManualSessionDialog(
                 }
             }
         )
+    } else if (step == 2) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Payment Method") },
+            text = {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = paymentMethod == "MONEY", onClick = { paymentMethod = "MONEY" })
+                        Text("Money")
+                        Spacer(modifier = Modifier.width(16.dp))
+                        RadioButton(selected = paymentMethod == "CARD", onClick = { paymentMethod = "CARD" })
+                        Text("Card")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { step = 3 }) {
+                    Text("Next")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { step = 1 }) {
+                    Text("Back")
+                }
+            }
+        )
     } else {
         var showAddItemMenu by remember { mutableStateOf(false) }
 
@@ -344,13 +392,13 @@ fun AddManualSessionDialog(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    if (sessionItems.isNotEmpty()) onConfirm(selectedCategoryName, sessionItems)
+                    if (sessionItems.isNotEmpty()) onConfirm(selectedCategoryName, paymentMethod, sessionItems)
                 }) {
                     Text("Finish")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { step = 1 }) {
+                TextButton(onClick = { step = 2 }) {
                     Text("Back")
                 }
             }

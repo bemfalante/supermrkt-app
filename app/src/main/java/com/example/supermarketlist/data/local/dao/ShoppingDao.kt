@@ -7,26 +7,38 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ShoppingDao {
     // Categories
-    @Query("SELECT * FROM categories")
+    @Query("SELECT * FROM categories ORDER BY displayOrder ASC, name ASC")
     fun getAllCategories(): Flow<List<Category>>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertCategory(category: Category): Long
 
+    @Update
+    suspend fun updateCategory(category: Category)
+
     @Delete
     suspend fun deleteCategory(category: Category)
 
     // Items
-    @Query("SELECT * FROM shopping_items")
+    @Query("SELECT * FROM shopping_items ORDER BY name ASC")
     fun getAllItems(): Flow<List<ShoppingItem>>
 
     @Query("SELECT * FROM shopping_items")
     suspend fun getAllItemsSnapshot(): List<ShoppingItem>
 
-    @Query("SELECT * FROM shopping_items WHERE categoryId = :categoryId")
+    @Query("""
+        SELECT shopping_items.* FROM shopping_items
+        INNER JOIN item_category_cross_ref ON shopping_items.id = item_category_cross_ref.itemId
+        WHERE item_category_cross_ref.categoryId = :categoryId
+        ORDER BY shopping_items.isChecked ASC, shopping_items.name ASC
+    """)
     fun getItemsByCategory(categoryId: Long): Flow<List<ShoppingItem>>
 
-    @Query("SELECT * FROM shopping_items WHERE categoryId IS NULL")
+    @Query("""
+        SELECT * FROM shopping_items
+        WHERE id NOT IN (SELECT itemId FROM item_category_cross_ref)
+        ORDER BY isChecked ASC, name ASC
+    """)
     fun getUncategorizedItems(): Flow<List<ShoppingItem>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -37,6 +49,16 @@ interface ShoppingDao {
 
     @Delete
     suspend fun deleteItem(item: ShoppingItem)
+
+    // CrossRef
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertItemCategoryCrossRef(crossRef: ItemCategoryCrossRef)
+
+    @Query("DELETE FROM item_category_cross_ref WHERE itemId = :itemId")
+    suspend fun deleteItemCategoryCrossRefs(itemId: Long)
+
+    @Query("SELECT categoryId FROM item_category_cross_ref WHERE itemId = :itemId")
+    suspend fun getCategoryIdsForItem(itemId: Long): List<Long>
 
     // Shopping Sessions
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -50,6 +72,9 @@ interface ShoppingDao {
 
     @Query("SELECT * FROM shopping_sessions ORDER BY timestamp DESC")
     fun getAllSessions(): Flow<List<ShoppingSession>>
+
+    @Query("UPDATE shopping_sessions SET paymentMethod = :paymentMethod WHERE id = :sessionId")
+    suspend fun updateShoppingSessionPayment(sessionId: Long, paymentMethod: String)
 
     @Delete
     suspend fun deleteSession(session: ShoppingSession)

@@ -6,22 +6,32 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "categories")
 data class Category(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val name: String
+    val name: String,
+    val displayOrder: Int = 0
 )
 
 @Entity(tableName = "shopping_items")
 data class ShoppingItem(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
-    val categoryId: Long?,
     val isChecked: Boolean = false
+)
+
+@Entity(
+    tableName = "item_category_cross_ref",
+    primaryKeys = ["itemId", "categoryId"]
+)
+data class ItemCategoryCrossRef(
+    val itemId: Long,
+    val categoryId: Long
 )
 
 @Entity(tableName = "shopping_sessions")
 data class ShoppingSession(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val categoryName: String,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val paymentMethod: String = "MONEY" // "MONEY", "CARD"
 )
 
 @Entity(tableName = "shopping_session_items")
@@ -54,7 +64,12 @@ data class ActiveShoppingSession(
 @Entity(tableName = "active_shopping_items")
 data class ActiveShoppingItem(
     @PrimaryKey val itemId: Long,
-    val state: String, // "EMPTY", "GREEN", "RED"
+    val state: String, // "EMPTY", "GREEN", "RED", "NOT_FOUND_X"
     val price: Double,
     val quantity: Double
+)
+
+data class ShoppingItemWithCategoryIds(
+    val item: ShoppingItem,
+    val categoryIds: List<Long>
 )

@@ -11,13 +11,14 @@ import com.example.supermarketlist.data.local.entity.*
     entities = [
         Category::class,
         ShoppingItem::class,
+        ItemCategoryCrossRef::class,
         ShoppingSession::class,
         ShoppingSessionItem::class,
         ItemPriceHistory::class,
         ActiveShoppingSession::class,
         ActiveShoppingItem::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class ShoppingDatabase : RoomDatabase() {
