@@ -19,18 +19,7 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
     val categories: StateFlow<List<Category>> = dao.getAllCategories()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val items: StateFlow<List<ShoppingItemWithCategoryIds>> = dao.getAllItems()
-        .flatMapLatest { itemList ->
-            val flows = itemList.map { item ->
-                flow {
-                    val catIds = dao.getCategoryIdsForItem(item.id)
-                    emit(ShoppingItemWithCategoryIds(item, catIds))
-                }
-            }
-            if (flows.isEmpty()) flowOf(emptyList())
-            else combine(flows) { it.toList() }
-        }
+    val items: StateFlow<List<ShoppingItemWithCategories>> = dao.getAllItemsWithCategories()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _activeSession = MutableStateFlow<ActiveShoppingSession?>(null)
@@ -57,21 +46,37 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
         private set
 
     fun addItem(name: String, categoryIds: List<Long>, onAdded: (Long) -> Unit = {}) {
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) return
+
         if (categoryIds.isNotEmpty()) {
             lastUsedCategoryId = categoryIds.last()
         }
         viewModelScope.launch {
-            val id = dao.insertItem(ShoppingItem(name = name))
+            // Check for existing item case-insensitive
+            val allItems = dao.getAllItemsSnapshot()
+            val existingItem = allItems.find { it.name.trim().equals(trimmedName, ignoreCase = true) }
+
+            val id = if (existingItem != null) {
+                existingItem.id
+            } else {
+                dao.insertItem(ShoppingItem(name = trimmedName))
+            }
+
+            // 1.8-3 fix: replace category associations if adding from a header
+            // Actually, requirements say "uncheck previous categories automatically that are different from the actual one"
+            // This means we overwrite the cross-refs for this item.
+            dao.deleteItemCategoryCrossRefs(id)
             categoryIds.forEach { catId ->
                 dao.insertItemCategoryCrossRef(ItemCategoryCrossRef(itemId = id, categoryId = catId))
             }
 
-            // If we are currently in a shopping session and the new item matches the category
+            // If we are currently in a shopping session and the item belongs here
             activeSession.value?.let { session ->
-                if (session.categoryId == null && categoryIds.isEmpty()) {
-                    dao.upsertActiveShoppingItem(ActiveShoppingItem(itemId = id, state = "GREEN", price = 0.0, quantity = 1.0))
-                    _newItemAddedEvent.emit(id)
-                } else if (session.categoryId != null && categoryIds.contains(session.categoryId)) {
+                val belongsToSession = (session.categoryId == null && categoryIds.isEmpty()) ||
+                                       (session.categoryId != null && categoryIds.contains(session.categoryId))
+
+                if (belongsToSession) {
                     dao.upsertActiveShoppingItem(ActiveShoppingItem(itemId = id, state = "GREEN", price = 0.0, quantity = 1.0))
                     _newItemAddedEvent.emit(id)
                 }

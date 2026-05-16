@@ -20,6 +20,14 @@ interface ShoppingDao {
     suspend fun deleteCategory(category: Category)
 
     // Items
+    @Transaction
+    @Query("SELECT * FROM shopping_items ORDER BY name ASC")
+    fun getAllItemsWithCategories(): Flow<List<ShoppingItemWithCategories>>
+
+    @Transaction
+    @Query("SELECT * FROM shopping_items")
+    suspend fun getAllItemsWithCategoriesSnapshot(): List<ShoppingItemWithCategories>
+
     @Query("SELECT * FROM shopping_items ORDER BY name ASC")
     fun getAllItems(): Flow<List<ShoppingItem>>
 

@@ -41,17 +41,28 @@ fun ShoppingScreen(
     onFinished: () -> Unit,
     onStartVoiceInput: () -> Unit
 ) {
-    val categoryItemsFlow = viewModel.getItemsByCategory(categoryId).collectAsState(initial = emptyList())
-    val categoryItems = categoryItemsFlow.value
+    val allItems by viewModel.items.collectAsState()
     val activeShoppingItems by viewModel.activeShoppingItems.collectAsState()
-    val itemsById = categoryItems.associateBy { it.id }
 
-    val activeItems = activeShoppingItems.filter { itemsById.containsKey(it.itemId) }
+    // 1.8-4 fix: correctly filter items that belong to the current shopping category
+    val activeItems = remember(allItems, activeShoppingItems, categoryId) {
+        activeShoppingItems.filter { active ->
+            val itemWithCats = allItems.find { it.item.id == active.itemId }
+            if (itemWithCats == null) return@filter false
+
+            val catIds = itemWithCats.categories.map { it.id }
+            if (categoryId == null) catIds.isEmpty()
+            else catIds.contains(categoryId)
+        }
+    }
+
+    val itemsById = allItems.associate { it.item.id to it.item }
 
     var showPriceQtyDialogForItem by remember { mutableStateOf<Long?>(null) }
     var showAddItemDialog by remember { mutableStateOf(false) }
     var showPriceHistoryDialog by remember { mutableStateOf<String?>(null) }
     var showPaymentPrompt by remember { mutableStateOf(false) }
+    var showCancelConfirmDialog by remember { mutableStateOf(false) }
 
     var finishing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -83,6 +94,13 @@ fun ShoppingScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = { showCancelConfirmDialog = true },
+                        enabled = !finishing
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color.Red)
+                    }
+
                     Button(
                         onClick = {
                             if (!finishing) {
@@ -297,6 +315,28 @@ fun ShoppingScreen(
                 delay(100)
                 focusRequester.requestFocus()
             }
+        }
+
+        if (showCancelConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showCancelConfirmDialog = false },
+                title = { Text("Cancel Shopping?") },
+                text = { Text("All progress in this session will be lost.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.cancelShopping()
+                        showCancelConfirmDialog = false
+                        onFinished()
+                    }) {
+                        Text("Yes, Cancel", color = Color.Red)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showCancelConfirmDialog = false }) {
+                        Text("No")
+                    }
+                }
+            )
         }
 
         if (showPaymentPrompt) {

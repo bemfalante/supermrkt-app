@@ -1,7 +1,6 @@
 package com.example.supermarketlist.data.local.entity
 
-import androidx.room.Entity
-import androidx.room.PrimaryKey
+import androidx.room.*
 
 @Entity(tableName = "categories")
 data class Category(
@@ -69,7 +68,16 @@ data class ActiveShoppingItem(
     val quantity: Double
 )
 
-data class ShoppingItemWithCategoryIds(
-    val item: ShoppingItem,
-    val categoryIds: List<Long>
+data class ShoppingItemWithCategories(
+    @Embedded val item: ShoppingItem,
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "id",
+        associateBy = Junction(
+            value = ItemCategoryCrossRef::class,
+            parentColumn = "itemId",
+            entityColumn = "categoryId"
+        )
+    )
+    val categories: List<Category>
 )

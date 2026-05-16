@@ -27,7 +27,7 @@ import java.text.SimpleDateFormat
 import com.example.supermarketlist.R
 import com.example.supermarketlist.data.local.entity.Category
 import com.example.supermarketlist.data.local.entity.ShoppingItem
-import com.example.supermarketlist.data.local.entity.ShoppingItemWithCategoryIds
+import com.example.supermarketlist.data.local.entity.ShoppingItemWithCategories
 import com.example.supermarketlist.viewmodel.ShoppingViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -70,8 +70,8 @@ fun MainScreen(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Market List")
-                        Spacer(modifier = Modifier.width(8.dp))
                         if (activeSession != null) {
+                            Spacer(modifier = Modifier.width(8.dp))
                             IconButton(
                                 onClick = { showCancelConfirmDialog = true },
                                 modifier = Modifier.size(32.dp)
@@ -149,20 +149,20 @@ fun MainScreen(
                             onStartShopping = { onStartShopping(category.id) }
                         )
                     }
-                    val categoryItems = items.filter { it.categoryIds.contains(category.id) }
-                    items(categoryItems, key = { "cat_${category.id}_item_${it.item.id}" }) { itemWithIds ->
+                    val categoryItems = items.filter { it.categories.any { cat -> cat.id == category.id } }
+                    items(categoryItems, key = { "cat_${category.id}_item_${it.item.id}" }) { itemWithCats ->
                         ShoppingItemRow(
-                            item = itemWithIds.item,
-                            onToggle = { viewModel.toggleItem(itemWithIds.item) },
+                            item = itemWithCats.item,
+                            onToggle = { viewModel.toggleItem(itemWithCats.item) },
                             onLongPress = {
-                                selectedItemForAction = itemWithIds.item
+                                selectedItemForAction = itemWithCats.item
                                 showItemActionDialog = true
                             }
                         )
                     }
                 }
 
-                val uncategorized = items.filter { it.categoryIds.isEmpty() }
+                val uncategorized = items.filter { it.categories.isEmpty() }
                 if (uncategorized.isNotEmpty()) {
                     item(key = "header_uncategorized") {
                         CategoryHeader(
@@ -174,12 +174,12 @@ fun MainScreen(
                             onStartShopping = { onStartShopping(null) }
                         )
                     }
-                    items(uncategorized, key = { "uncat_item_${it.item.id}" }) { itemWithIds ->
+                    items(uncategorized, key = { "uncat_item_${it.item.id}" }) { itemWithCats ->
                         ShoppingItemRow(
-                            item = itemWithIds.item,
-                            onToggle = { viewModel.toggleItem(itemWithIds.item) },
+                            item = itemWithCats.item,
+                            onToggle = { viewModel.toggleItem(itemWithCats.item) },
                             onLongPress = {
-                                selectedItemForAction = itemWithIds.item
+                                selectedItemForAction = itemWithCats.item
                                 showItemActionDialog = true
                             }
                         )
@@ -191,15 +191,18 @@ fun MainScreen(
         }
 
         if (showAddItemDialog) {
+            var localSelectedIds by remember(initialCategoryIdsForAdd) { mutableStateOf(initialCategoryIdsForAdd) }
+
             AddEditItemDialog(
                 title = "Add Item",
                 initialName = "",
-                initialCategoryIds = initialCategoryIdsForAdd,
+                initialCategoryIds = localSelectedIds,
                 categories = categories,
                 isSequential = true,
                 onDismiss = { showAddItemDialog = false },
                 onConfirm = { name, catIds ->
                     viewModel.addItem(name, catIds)
+                    localSelectedIds = initialCategoryIdsForAdd
                 },
                 onAddCategory = { name, onDone -> viewModel.addCategory(name, onDone) }
             )
@@ -484,7 +487,6 @@ fun AddEditItemDialog(
                     onConfirm(name, selectedCategoryIds)
                     if (isSequential) {
                         name = ""
-                        // Keep open
                     } else {
                         onDismiss()
                     }
@@ -582,7 +584,7 @@ fun CategoryMultiSelectDropdown(
                         Text("Uncategorized")
                     }
                 },
-                onClick = { /* In many-to-many, empty list means uncategorized */ }
+                onClick = { /* empty list means uncategorized */ }
             )
             HorizontalDivider()
             DropdownMenuItem(
