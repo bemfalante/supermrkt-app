@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import java.text.Collator
 import java.text.SimpleDateFormat
 import com.example.supermarketlist.R
 import com.example.supermarketlist.data.local.entity.Category
@@ -82,26 +83,11 @@ fun MainScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showSettingsMenu = true }) {
-                        Icon(imageVector = Icons.Default.Settings, contentDescription = "Settings")
+                    TextButton(onClick = onNavigateToCategories) {
+                        Text("Categories", style = MaterialTheme.typography.labelMedium)
                     }
-                    DropdownMenu(expanded = showSettingsMenu, onDismissRequest = { showSettingsMenu = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Manage Categories") },
-                            onClick = {
-                                showSettingsMenu = false
-                                onNavigateToCategories()
-                            },
-                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.List, null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Shopping History") },
-                            onClick = {
-                                showSettingsMenu = false
-                                onNavigateToHistory()
-                            },
-                            leadingIcon = { Icon(Icons.Default.ShoppingCart, null) }
-                        )
+                    TextButton(onClick = onNavigateToHistory) {
+                        Text("History", style = MaterialTheme.typography.labelMedium)
                     }
                 }
             )
@@ -134,6 +120,8 @@ fun MainScreen(
             }
         }
     ) { padding ->
+        val collator = remember { Collator.getInstance(Locale("pt", "BR")).apply { strength = Collator.PRIMARY } }
+
         if (items.isEmpty()) {
             WelcomeScreen(modifier = Modifier.padding(padding), onManageCategories = onNavigateToCategories)
         } else {
@@ -149,7 +137,13 @@ fun MainScreen(
                             onStartShopping = { viewModel.startShopping(category.id) }
                         )
                     }
-                    val categoryItems = items.filter { it.categories.any { cat -> cat.id == category.id } }
+                    val categoryItems = items
+                        .filter { it.categories.any { cat -> cat.id == category.id } }
+                        .sortedWith { a, b ->
+                            if (a.item.isChecked != b.item.isChecked) a.item.isChecked.compareTo(b.item.isChecked)
+                            else collator.compare(a.item.name, b.item.name)
+                        }
+
                     items(categoryItems, key = { "cat_${category.id}_item_${it.item.id}" }) { itemWithCats ->
                         ShoppingItemRow(
                             item = itemWithCats.item,
@@ -162,7 +156,13 @@ fun MainScreen(
                     }
                 }
 
-                val uncategorized = items.filter { it.categories.isEmpty() }
+                val uncategorized = items
+                    .filter { it.categories.isEmpty() }
+                    .sortedWith { a, b ->
+                        if (a.item.isChecked != b.item.isChecked) a.item.isChecked.compareTo(b.item.isChecked)
+                        else collator.compare(a.item.name, b.item.name)
+                    }
+
                 if (uncategorized.isNotEmpty()) {
                     item(key = "header_uncategorized") {
                         CategoryHeader(

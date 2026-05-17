@@ -17,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -31,6 +32,7 @@ import com.example.supermarketlist.data.local.entity.ShoppingItem
 import com.example.supermarketlist.viewmodel.ShoppingViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.text.Collator
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -76,7 +78,10 @@ fun ShoppingScreen(
     val scope = rememberCoroutineScope()
 
     val ptBr = remember { Locale("pt", "BR") }
-    val totalPrice = activeItems.filter { it.state == "GREEN" }.sumOf { it.price * it.quantity }
+    // 1.10 fix: Use activeShoppingItems directly for total sum to ensure reactivity when details are updated
+    val totalPrice = remember(activeShoppingItems, activeItems) {
+        activeItems.filter { it.state == "GREEN" }.sumOf { it.price * it.quantity }
+    }
 
     BackHandler {
         // Do nothing to prevent system back navigation
@@ -102,11 +107,15 @@ fun ShoppingScreen(
                     }
                 },
                 actions = {
-                    IconButton(
+                    Button(
                         onClick = { showCancelConfirmDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                        shape = RoundedCornerShape(4.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.scale(0.7f * 0.75f),
                         enabled = !finishing
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color.Red)
+                        Text("Cancel", color = Color.White, style = MaterialTheme.typography.labelSmall)
                     }
 
                     Button(
@@ -115,11 +124,13 @@ fun ShoppingScreen(
                                 showPaymentPrompt = true
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF5DF4D)),
                         shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.scale(0.7f),
                         enabled = !finishing
                     ) {
-                        Text("Finish Shopping!", color = Color.White)
+                        Text("Finish Shopping!", color = Color.Black, style = MaterialTheme.typography.labelSmall)
                     }
                 }
             )
@@ -150,6 +161,8 @@ fun ShoppingScreen(
         },
         floatingActionButtonPosition = FabPosition.Center
     ) { padding ->
+        val collator = remember { Collator.getInstance(Locale("pt", "BR")).apply { strength = Collator.PRIMARY } }
+
         if (activeItems.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Text("No active items in this category")
@@ -175,7 +188,7 @@ fun ShoppingScreen(
                     else -> 0
                 }
                 if (weightA != weightB) weightA.compareTo(weightB)
-                else nameA.lowercase().compareTo(nameB.lowercase())
+                else collator.compare(nameA, nameB)
             }
 
             LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(bottom = 80.dp)) {
@@ -331,12 +344,17 @@ fun ShoppingScreen(
                 title = { Text("Cancel Shopping?") },
                 text = { Text("All progress in this session will be lost.") },
                 confirmButton = {
-                    TextButton(onClick = {
-                        viewModel.cancelShopping()
-                        showCancelConfirmDialog = false
-                        onFinished()
-                    }) {
-                        Text("Yes, Cancel", color = Color.Red)
+                    Button(
+                        onClick = {
+                            viewModel.cancelShopping()
+                            showCancelConfirmDialog = false
+                            onFinished()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                        shape = RoundedCornerShape(4.dp), // Rectangle
+                        modifier = Modifier.scale(0.7f * 0.75f)
+                    ) {
+                        Text("Cancel", color = Color.White)
                     }
                 },
                 dismissButton = {
@@ -442,9 +460,7 @@ fun ShoppingItemRow(
                 ),
             contentAlignment = Alignment.Center
         ) {
-            if (state == "NOT_FOUND_X") {
-                Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
-            }
+            // White "x" icon removed per requirement
         }
     }
 }

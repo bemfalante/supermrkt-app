@@ -41,12 +41,17 @@ fun CategoryScreen(viewModel: ShoppingViewModel, onNavigateBack: () -> Unit) {
     }
 
     val lazyListState = rememberLazyListState()
-    val dragDropState = rememberDragDropState(lazyListState) { fromIndex, toIndex ->
-        listData = listData.toMutableList().apply {
-            add(toIndex, removeAt(fromIndex))
+    val dragDropState = rememberDragDropState(
+        lazyListState = lazyListState,
+        onMove = { fromIndex, toIndex ->
+            listData = listData.toMutableList().apply {
+                add(toIndex, removeAt(fromIndex))
+            }
+        },
+        onDragEnd = {
+            viewModel.updateCategoryOrder(listData)
         }
-        viewModel.updateCategoryOrder(listData)
-    }
+    )
 
     Scaffold(
         topBar = {
@@ -146,11 +151,12 @@ fun CategoryScreen(viewModel: ShoppingViewModel, onNavigateBack: () -> Unit) {
 @Composable
 fun rememberDragDropState(
     lazyListState: LazyListState,
-    onMove: (Int, Int) -> Unit
+    onMove: (Int, Int) -> Unit,
+    onDragEnd: () -> Unit
 ): DragDropState {
     val scope = rememberCoroutineScope()
     val state = remember(lazyListState) {
-        DragDropState(lazyListState, scope, onMove)
+        DragDropState(lazyListState, scope, onMove, onDragEnd)
     }
     return state
 }
@@ -158,7 +164,8 @@ fun rememberDragDropState(
 class DragDropState(
     val lazyListState: LazyListState,
     private val coroutineScope: kotlinx.coroutines.CoroutineScope,
-    private val onMove: (Int, Int) -> Unit
+    private val onMove: (Int, Int) -> Unit,
+    private val onDragEnd: () -> Unit
 ) {
     var draggedItemIndex by mutableStateOf<Int?>(null)
         private set
@@ -177,6 +184,9 @@ class DragDropState(
     }
 
     fun onDragInterrupted() {
+        if (draggedItemIndex != null) {
+            onDragEnd()
+        }
         draggedItemIndex = null
         itemOffset = 0f
         scrollJob?.cancel()

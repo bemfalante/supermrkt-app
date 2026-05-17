@@ -283,7 +283,7 @@ fun AddManualSessionDialog(
     var selectedCategoryName by remember { mutableStateOf("") }
     var paymentMethod by remember { mutableStateOf("MONEY") }
     val sessionItems = remember { mutableStateListOf<ShoppingSessionItem>() }
-    var step by remember { mutableIntStateOf(1) } // 1: Category, 2: Payment, 3: Items
+    var step by remember { mutableIntStateOf(1) } // 1: Category, 2: Items, 3: Payment
 
     if (step == 1) {
         AlertDialog(
@@ -347,32 +347,6 @@ fun AddManualSessionDialog(
             }
         )
     } else if (step == 2) {
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text("Payment Method") },
-            text = {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = paymentMethod == "MONEY", onClick = { paymentMethod = "MONEY" })
-                        Text("Money")
-                        Spacer(modifier = Modifier.width(16.dp))
-                        RadioButton(selected = paymentMethod == "CARD", onClick = { paymentMethod = "CARD" })
-                        Text("Card")
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { step = 3 }) {
-                    Text("Next")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { step = 1 }) {
-                    Text("Back")
-                }
-            }
-        )
-    } else {
         var showAddItemMenu by remember { mutableStateOf(false) }
 
         AlertDialog(
@@ -382,7 +356,8 @@ fun AddManualSessionDialog(
                 Column {
                     LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
                         items(sessionItems) { item ->
-                            Text("${item.itemName} - ${item.quantity} x R$ ${item.price} (${item.status})")
+                            val ptBr = Locale("pt", "BR")
+                            Text("• ${item.itemName} - ${item.quantity} x R$ ${String.format(ptBr, "%.2f", item.price)} (${item.status})")
                         }
                     }
                     Button(onClick = { showAddItemMenu = true }, modifier = Modifier.fillMaxWidth()) {
@@ -392,13 +367,13 @@ fun AddManualSessionDialog(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    if (sessionItems.isNotEmpty()) onConfirm(selectedCategoryName, paymentMethod, sessionItems)
+                    if (sessionItems.isNotEmpty()) step = 3
                 }) {
-                    Text("Finish")
+                    Text("Next")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { step = 2 }) {
+                TextButton(onClick = { step = 1 }) {
                     Text("Back")
                 }
             }
@@ -413,6 +388,36 @@ fun AddManualSessionDialog(
                 }
             )
         }
+    } else {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Payment Method") },
+            text = {
+                Column {
+                    Text("Select how you paid for these items:")
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = paymentMethod == "MONEY", onClick = { paymentMethod = "MONEY" })
+                        Text("Money")
+                        Spacer(modifier = Modifier.width(16.dp))
+                        RadioButton(selected = paymentMethod == "CARD", onClick = { paymentMethod = "CARD" })
+                        Text("Card")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onConfirm(selectedCategoryName, paymentMethod, sessionItems)
+                }) {
+                    Text("Finish")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { step = 2 }) {
+                    Text("Back")
+                }
+            }
+        )
     }
 }
 

@@ -12,11 +12,20 @@ import com.example.supermarketlist.data.local.entity.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.text.Collator
+import java.util.Locale
 
 class ShoppingViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = ShoppingDatabase.getDatabase(application).shoppingDao()
+    private val ptBrCollator = Collator.getInstance(Locale("pt", "BR")).apply { strength = Collator.PRIMARY }
 
     val categories: StateFlow<List<Category>> = dao.getAllCategories()
+        .map { list ->
+            list.sortedWith { a, b ->
+                if (a.displayOrder != b.displayOrder) a.displayOrder.compareTo(b.displayOrder)
+                else ptBrCollator.compare(a.name, b.name)
+            }
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val items: StateFlow<List<ShoppingItemWithCategories>> = dao.getAllItemsWithCategories()
