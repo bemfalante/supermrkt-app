@@ -494,8 +494,13 @@ fun AddEditItemDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(if (isSequential) "Finish" else "Cancel")
+            TextButton(onClick = {
+                if (isSequential && name.isNotBlank()) {
+                    onConfirm(name, selectedCategoryIds)
+                }
+                onDismiss()
+            }) {
+                Text(if (isSequential) "Add & Finish" else "Cancel")
             }
         }
     )
