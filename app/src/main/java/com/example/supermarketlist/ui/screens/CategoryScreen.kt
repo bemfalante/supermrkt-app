@@ -41,12 +41,17 @@ fun CategoryScreen(viewModel: ShoppingViewModel, onNavigateBack: () -> Unit) {
     }
 
     val lazyListState = rememberLazyListState()
-    val dragDropState = rememberDragDropState(lazyListState) { fromIndex, toIndex ->
-        listData = listData.toMutableList().apply {
-            add(toIndex, removeAt(fromIndex))
+    val dragDropState = rememberDragDropState(
+        lazyListState,
+        onMove = { fromIndex, toIndex ->
+            listData = listData.toMutableList().apply {
+                add(toIndex, removeAt(fromIndex))
+            }
+        },
+        onDragEnd = {
+            viewModel.updateCategoryOrder(listData)
         }
-        viewModel.updateCategoryOrder(listData)
-    }
+    )
 
     Scaffold(
         topBar = {
@@ -146,11 +151,12 @@ fun CategoryScreen(viewModel: ShoppingViewModel, onNavigateBack: () -> Unit) {
 @Composable
 fun rememberDragDropState(
     lazyListState: LazyListState,
-    onMove: (Int, Int) -> Unit
+    onMove: (Int, Int) -> Unit,
+    onDragEnd: () -> Unit
 ): DragDropState {
     val scope = rememberCoroutineScope()
     val state = remember(lazyListState) {
-        DragDropState(lazyListState, scope, onMove)
+        DragDropState(lazyListState, scope, onMove, onDragEnd)
     }
     return state
 }
@@ -158,7 +164,8 @@ fun rememberDragDropState(
 class DragDropState(
     val lazyListState: LazyListState,
     private val coroutineScope: kotlinx.coroutines.CoroutineScope,
-    private val onMove: (Int, Int) -> Unit
+    private val onMove: (Int, Int) -> Unit,
+    private val onDragEnd: () -> Unit
 ) {
     var draggedItemIndex by mutableStateOf<Int?>(null)
         private set
@@ -170,13 +177,20 @@ class DragDropState(
 
     fun onDragStart(offset: androidx.compose.ui.geometry.Offset) {
         lazyListState.layoutInfo.visibleItemsInfo
-            .firstOrNull { item -> offset.y.toInt() in item.offset..(item.offset + item.size) }
+            .firstOrNull { item ->
+                val top = item.offset
+                val bottom = item.offset + item.size
+                offset.y.toInt() in top..bottom
+            }
             ?.let { item ->
                 draggedItemIndex = item.index
             }
     }
 
     fun onDragInterrupted() {
+        if (draggedItemIndex != null) {
+            onDragEnd()
+        }
         draggedItemIndex = null
         itemOffset = 0f
         scrollJob?.cancel()
@@ -195,6 +209,7 @@ class DragDropState(
         lazyListState.layoutInfo.visibleItemsInfo
             .firstOrNull { item ->
                 (item.index != draggedItemIndex) &&
+                (item.index < lazyListState.layoutInfo.totalItemsCount - 1) && // Avoid the spacer
                 (if (item.index > draggedItemIndex!!) endOffset > (item.offset + item.size / 2)
                  else startOffset < (item.offset + item.size / 2))
             }

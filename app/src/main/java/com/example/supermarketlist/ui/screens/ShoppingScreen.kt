@@ -1,7 +1,9 @@
 package com.example.supermarketlist.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,11 +14,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -52,6 +56,7 @@ fun ShoppingScreen(
     var showAddItemDialog by remember { mutableStateOf(false) }
     var showPriceHistoryDialog by remember { mutableStateOf<String?>(null) }
     var showPaymentPrompt by remember { mutableStateOf(false) }
+    var showCancelConfirmDialog by remember { mutableStateOf(false) }
 
     var finishing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -84,16 +89,31 @@ fun ShoppingScreen(
                 },
                 actions = {
                     Button(
+                        onClick = { showCancelConfirmDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier.scale(0.825f),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        enabled = !finishing
+                    ) {
+                        Text("Cancel", color = Color.White)
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    Button(
                         onClick = {
                             if (!finishing) {
                                 showPaymentPrompt = true
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
-                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF5DF4D)),
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier.scale(0.77f),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         enabled = !finishing
                     ) {
-                        Text("Finish Shopping!", color = Color.White)
+                        Text("Finish Shopping!", color = Color.Black)
                     }
                 }
             )
@@ -194,11 +214,11 @@ fun ShoppingScreen(
                                 onDoubleClick = {
                                     viewModel.resetActiveItem(item.id)
                                 },
-                                onPriceLongPress = {
-                                     showPriceQtyDialogForItem = item.id
+                                onPriceHistoryClick = {
+                                    showPriceHistoryDialog = item.name
                                 },
-                                onItemLongPressAction = {
-                                     showPriceHistoryDialog = item.name
+                                onPriceClick = {
+                                    showPriceQtyDialogForItem = item.id
                                 }
                             )
                         }
@@ -215,7 +235,7 @@ fun ShoppingScreen(
 
             if (item != null) {
                 var priceInput by remember(itemId) { mutableStateOf(if (activeItem != null && activeItem.price > 0) activeItem.price.toString() else "") }
-                var qtyInput by remember(itemId) { mutableStateOf(activeItem?.quantity?.toString() ?: "1") }
+                var qtyInputs by remember(itemId) { mutableStateOf(listOf(activeItem?.quantity?.toString() ?: "1")) }
 
                 AlertDialog(
                     onDismissRequest = { showPriceQtyDialogForItem = null },
@@ -230,20 +250,45 @@ fun ShoppingScreen(
                                 modifier = Modifier.fillMaxWidth().focusRequester(priceFocusRequester)
                             )
                             Spacer(modifier = Modifier.height(16.dp))
-                            TextField(
-                                value = qtyInput,
-                                onValueChange = { qtyInput = it },
-                                label = { Text("Quantity") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                            Text("Quantities:", style = MaterialTheme.typography.bodySmall)
+                            qtyInputs.forEachIndexed { index, qtyValue ->
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                    TextField(
+                                        value = qtyValue,
+                                        onValueChange = { newValue ->
+                                            qtyInputs = qtyInputs.toMutableList().apply { this[index] = newValue }
+                                        },
+                                        label = { Text("Qty ${index + 1}") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    if (qtyInputs.size > 1) {
+                                        IconButton(onClick = {
+                                            qtyInputs = qtyInputs.toMutableList().apply { removeAt(index) }
+                                        }) {
+                                            Icon(Icons.Default.Close, contentDescription = "Remove Qty", tint = Color.Red)
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+                            TextButton(onClick = {
+                                qtyInputs = qtyInputs + "1"
+                            }) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Add Quantity Field")
+                                }
+                            }
                         }
                     },
                     confirmButton = {
                         TextButton(onClick = {
                             val price = priceInput.replace(",", ".").toDoubleOrNull() ?: 0.0
-                            val qty = qtyInput.replace(",", ".").toDoubleOrNull() ?: 1.0
-                            viewModel.updateActiveItemDetails(itemId, price, qty)
+                            val totalQty = qtyInputs.sumOf { it.replace(",", ".").toDoubleOrNull() ?: 0.0 }
+                            val finalQty = if (totalQty > 0) totalQty else 1.0
+                            viewModel.updateActiveItemDetails(itemId, price, finalQty)
                             showPriceQtyDialogForItem = null
                         }) {
                             Text("Save")
@@ -340,9 +385,32 @@ fun ShoppingScreen(
                 onDismiss = { showPriceHistoryDialog = null }
             )
         }
+
+        if (showCancelConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showCancelConfirmDialog = false },
+                title = { Text("Cancel Shopping?") },
+                text = { Text("Are you sure you want to cancel the current shopping session? All progress will be lost.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.cancelShopping()
+                        showCancelConfirmDialog = false
+                        onFinished()
+                    }) {
+                        Text("Yes, Cancel", color = Color.Red)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showCancelConfirmDialog = false }) {
+                        Text("No")
+                    }
+                }
+            )
+        }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ShoppingItemRow(
     item: ShoppingItem,
@@ -352,8 +420,8 @@ fun ShoppingItemRow(
     onToggle: () -> Unit,
     onLongPress: () -> Unit,
     onDoubleClick: () -> Unit,
-    onPriceLongPress: () -> Unit,
-    onItemLongPressAction: () -> Unit
+    onPriceHistoryClick: () -> Unit,
+    onPriceClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -365,38 +433,54 @@ fun ShoppingItemRow(
                     onDoubleTap = { onDoubleClick() }
                 )
             }
-            .padding(16.dp),
+            .padding(vertical = 12.dp, horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(item.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+
+        IconButton(onClick = onPriceHistoryClick, modifier = Modifier.size(24.dp)) {
+            Icon(
+                imageVector = Icons.Default.Info,
+                contentDescription = "Price History",
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                modifier = Modifier.size(18.dp)
+            )
+        }
+
         if (price != null) {
             val total = price * (quantity ?: 1.0)
             val ptBr = Locale("pt", "BR")
             Text(
                 text = "R$ ${String.format(ptBr, "%.2f", total)}",
-                modifier = Modifier.padding(horizontal = 8.dp),
+                modifier = Modifier
+                    .padding(horizontal = 8.dp)
+                    .combinedClickable(
+                        onClick = onPriceClick
+                    ),
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
         }
-        Box(
-            modifier = Modifier
-                .size(32.dp)
-                .clip(CircleShape)
-                .background(
-                    when (state) {
-                        "EMPTY" -> Color.LightGray.copy(alpha = 0.3f)
-                        "GREEN" -> Color(0xFF4CAF50)
-                        "RED" -> Color.Red
-                        "NOT_FOUND_X" -> Color.Red.copy(alpha = 0.5f)
-                        else -> Color.LightGray.copy(alpha = 0.3f)
-                    }
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            if (state == "NOT_FOUND_X") {
-                Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+
+        if (state != "EMPTY") {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(
+                        when (state) {
+                            "GREEN" -> Color(0xFF4CAF50)
+                            "RED" -> Color.Red
+                            "NOT_FOUND_X" -> Color.Red.copy(alpha = 0.5f)
+                            else -> Color.Transparent
+                        }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                // No icon inside the circle as per request
             }
+        } else {
+            Spacer(modifier = Modifier.size(32.dp))
         }
     }
 }

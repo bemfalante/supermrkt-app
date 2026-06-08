@@ -213,6 +213,8 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
             val priceHistories = mutableListOf<ItemPriceHistory>()
             val itemsToMarkChecked = mutableListOf<ShoppingItem>()
 
+            val totalPrice = activeItems.filter { it.state == "GREEN" }.sumOf { it.price * it.quantity }
+
             activeItems.forEach { active ->
                 val item = shoppingItems[active.itemId] ?: return@forEach
                 val status = when(active.state) {
@@ -250,7 +252,7 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
             }
 
             dao.completeShoppingSession(
-                session = ShoppingSession(categoryName = categoryName, paymentMethod = paymentMethod),
+                session = if (totalPrice > 0) ShoppingSession(categoryName = categoryName, paymentMethod = paymentMethod) else null,
                 sessionItems = sessionItems,
                 priceHistories = priceHistories,
                 itemsToMarkChecked = itemsToMarkChecked

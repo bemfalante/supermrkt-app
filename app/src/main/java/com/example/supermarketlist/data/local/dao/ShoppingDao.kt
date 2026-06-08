@@ -115,13 +115,15 @@ interface ShoppingDao {
 
     @Transaction
     suspend fun completeShoppingSession(
-        session: ShoppingSession,
+        session: ShoppingSession?,
         sessionItems: List<ShoppingSessionItem>,
         priceHistories: List<ItemPriceHistory>,
         itemsToMarkChecked: List<ShoppingItem>
     ) {
-        val sessionId = insertShoppingSession(session)
-        sessionItems.forEach { insertShoppingSessionItem(it.copy(sessionId = sessionId)) }
+        val sessionId = session?.let { insertShoppingSession(it) }
+        if (sessionId != null) {
+            sessionItems.forEach { insertShoppingSessionItem(it.copy(sessionId = sessionId)) }
+        }
         priceHistories.forEach { insertPriceHistory(it) }
         itemsToMarkChecked.forEach { updateItem(it.copy(isChecked = true)) }
         clearActiveShoppingItems()
