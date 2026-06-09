@@ -200,6 +200,7 @@ fun AppNavigation() {
                 onNavigateToHistory = { navController.navigate("history") },
                 onStartShopping = { catId ->
                     if (navController.currentDestination?.route?.startsWith("shopping") != true) {
+                        viewModel.startShopping(catId)
                         navController.navigate("shopping/${catId ?: -1L}")
                     }
                 },

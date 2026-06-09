@@ -78,14 +78,11 @@ fun ShoppingScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text("Shopping")
-                        Text(
-                            text = "Total: R$ ${String.format(ptBr, "%.2f", totalPrice)}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                    Text(
+                        text = "Total: R$ ${String.format(ptBr, "%.2f", totalPrice)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 },
                 actions = {
                     Button(
@@ -104,7 +101,15 @@ fun ShoppingScreen(
                     Button(
                         onClick = {
                             if (!finishing) {
-                                showPaymentPrompt = true
+                                if (totalPrice > 0) {
+                                    showPaymentPrompt = true
+                                } else {
+                                    finishing = true
+                                    scope.launch {
+                                        viewModel.finishShopping("NONE")
+                                        onFinished()
+                                    }
+                                }
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF5DF4D)),
