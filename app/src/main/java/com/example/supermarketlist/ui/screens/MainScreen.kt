@@ -212,8 +212,10 @@ fun MainScreen(
                 text = { Text("Are you sure you want to cancel the current shopping session? All progress will be lost.") },
                 confirmButton = {
                     TextButton(onClick = {
-                        viewModel.cancelShopping()
-                        showCancelConfirmDialog = false
+                        scope.launch {
+                            viewModel.cancelShopping()
+                            showCancelConfirmDialog = false
+                        }
                     }) {
                         Text("Yes, Cancel", color = Color.Red)
                     }

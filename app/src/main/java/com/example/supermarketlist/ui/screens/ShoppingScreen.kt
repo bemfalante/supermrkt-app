@@ -198,7 +198,7 @@ fun ShoppingScreen(
                                 modifier = Modifier.fillMaxSize().background(color).padding(horizontal = 20.dp),
                                 contentAlignment = Alignment.CenterEnd
                             ) {
-                                Icon(Icons.Default.Close, contentDescription = "Not Found", tint = Color.White)
+                                // Removed white "x" from background as well
                             }
                         },
                         enableDismissFromStartToEnd = false,
@@ -398,9 +398,11 @@ fun ShoppingScreen(
                 text = { Text("Are you sure you want to cancel the current shopping session? All progress will be lost.") },
                 confirmButton = {
                     TextButton(onClick = {
-                        viewModel.cancelShopping()
-                        showCancelConfirmDialog = false
-                        onFinished()
+                        scope.launch {
+                            viewModel.cancelShopping()
+                            showCancelConfirmDialog = false
+                            onFinished()
+                        }
                     }) {
                         Text("Yes, Cancel", color = Color.Red)
                     }
@@ -431,6 +433,7 @@ fun ShoppingItemRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
             .pointerInput(Unit) {
                 detectTapGestures(
                     onTap = { onToggle() },
@@ -441,15 +444,16 @@ fun ShoppingItemRow(
             .padding(vertical = 12.dp, horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(item.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-
-        IconButton(onClick = onPriceHistoryClick, modifier = Modifier.size(24.dp)) {
-            Icon(
-                imageVector = Icons.Default.Info,
-                contentDescription = "Price History",
-                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
-                modifier = Modifier.size(18.dp)
-            )
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+            Text(item.name, style = MaterialTheme.typography.bodyLarge)
+            IconButton(onClick = onPriceHistoryClick, modifier = Modifier.size(24.dp)) {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = "Price History",
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
 
         if (price != null) {
@@ -467,25 +471,22 @@ fun ShoppingItemRow(
             )
         }
 
-        if (state != "EMPTY") {
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(
-                        when (state) {
-                            "GREEN" -> Color(0xFF4CAF50)
-                            "RED" -> Color.Red
-                            "NOT_FOUND_X" -> Color.Red.copy(alpha = 0.5f)
-                            else -> Color.Transparent
-                        }
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                // No icon inside the circle as per request
-            }
-        } else {
-            Spacer(modifier = Modifier.size(32.dp))
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(
+                    when (state) {
+                        "EMPTY" -> Color.LightGray.copy(alpha = 0.3f)
+                        "GREEN" -> Color(0xFF4CAF50)
+                        "RED" -> Color.Red
+                        "NOT_FOUND_X" -> Color.Red.copy(alpha = 0.5f)
+                        else -> Color.LightGray.copy(alpha = 0.3f)
+                    }
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            // No white "x" icon inside the circle as per request
         }
     }
 }

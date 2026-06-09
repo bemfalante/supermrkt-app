@@ -301,12 +301,10 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun cancelShopping() {
-        viewModelScope.launch {
-            dao.clearActiveShoppingItems()
-            dao.clearActiveSession()
-            _activeSession.value = null
-        }
+    suspend fun cancelShopping() {
+        dao.clearActiveShoppingItems()
+        dao.clearActiveSession()
+        _activeSession.value = null
     }
 
     fun getItemsForSession(sessionId: Long): Flow<List<ShoppingSessionItem>> = dao.getItemsForSession(sessionId)
