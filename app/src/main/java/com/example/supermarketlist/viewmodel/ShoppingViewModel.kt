@@ -12,12 +12,11 @@ import com.example.supermarketlist.data.local.entity.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.text.Collator
+import java.util.Locale
 
 class ShoppingViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = ShoppingDatabase.getDatabase(application).shoppingDao()
-
-    val categories: StateFlow<List<Category>> = dao.getAllCategories()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val items: StateFlow<List<ShoppingItemWithCategoryIds>> = dao.getAllItems()
@@ -30,6 +29,16 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
             }
             if (flows.isEmpty()) flowOf(emptyList())
             else combine(flows) { it.toList() }
+        }
+        .map { list ->
+            val collator = Collator.getInstance(Locale("pt", "BR")).apply {
+                strength = Collator.PRIMARY
+            }
+            list.sortedWith { a, b ->
+                val checkedComp = a.item.isChecked.compareTo(b.item.isChecked)
+                if (checkedComp != 0) checkedComp
+                else collator.compare(a.item.name, b.item.name)
+            }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -46,6 +55,20 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
             }
         }
     }
+
+    val categories: StateFlow<List<Category>> = dao.getAllCategories()
+        .map { list ->
+            val collator = Collator.getInstance(Locale("pt", "BR")).apply {
+                strength = Collator.PRIMARY
+            }
+            // Sort by displayOrder first, then name
+            list.sortedWith { a, b ->
+                val orderComp = a.displayOrder.compareTo(b.displayOrder)
+                if (orderComp != 0) orderComp
+                else collator.compare(a.name, b.name)
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val sessions: StateFlow<List<ShoppingSession>> = dao.getAllSessions()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

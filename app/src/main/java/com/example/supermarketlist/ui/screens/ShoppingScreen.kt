@@ -35,6 +35,7 @@ import com.example.supermarketlist.data.local.entity.ShoppingItem
 import com.example.supermarketlist.viewmodel.ShoppingViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.text.Collator
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,7 +80,7 @@ fun ShoppingScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "Total: R$ ${String.format(ptBr, "%.2f", totalPrice)}",
+                        text = "R$ ${String.format(ptBr, "%.2f", totalPrice)}",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -174,7 +175,12 @@ fun ShoppingScreen(
                     else -> 0
                 }
                 if (weightA != weightB) weightA.compareTo(weightB)
-                else nameA.lowercase().compareTo(nameB.lowercase())
+                else {
+                    val collator = Collator.getInstance(Locale("pt", "BR")).apply {
+                        strength = Collator.PRIMARY
+                    }
+                    collator.compare(nameA, nameB)
+                }
             }
 
             LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(bottom = 80.dp)) {

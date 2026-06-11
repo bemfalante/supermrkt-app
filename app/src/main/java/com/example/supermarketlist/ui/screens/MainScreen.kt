@@ -33,7 +33,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.*
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun MainScreen(
     viewModel: ShoppingViewModel,
@@ -55,7 +55,8 @@ fun MainScreen(
     var showPriceHistoryDialog by remember { mutableStateOf<String?>(null) }
     var showCancelConfirmDialog by remember { mutableStateOf(false) }
 
-    var showSettingsMenu by remember { mutableStateOf(false) }
+    val expandedCategories = remember { mutableStateMapOf<Long?, Boolean>() }
+
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(activeSession) {
@@ -82,26 +83,11 @@ fun MainScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showSettingsMenu = true }) {
-                        Icon(imageVector = Icons.Default.Settings, contentDescription = "Settings")
+                    TextButton(onClick = onNavigateToCategories) {
+                        Text("Categories", style = MaterialTheme.typography.labelLarge)
                     }
-                    DropdownMenu(expanded = showSettingsMenu, onDismissRequest = { showSettingsMenu = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Manage Categories") },
-                            onClick = {
-                                showSettingsMenu = false
-                                onNavigateToCategories()
-                            },
-                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.List, null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Shopping History") },
-                            onClick = {
-                                showSettingsMenu = false
-                                onNavigateToHistory()
-                            },
-                            leadingIcon = { Icon(Icons.Default.ShoppingCart, null) }
-                        )
+                    TextButton(onClick = onNavigateToHistory) {
+                        Text("History", style = MaterialTheme.typography.labelLarge)
                     }
                 }
             )
@@ -138,10 +124,29 @@ fun MainScreen(
             WelcomeScreen(modifier = Modifier.padding(padding), onManageCategories = onNavigateToCategories)
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
+                item {
+                    val allExpanded = categories.all { expandedCategories[it.id] == true } &&
+                                    (items.none { it.categoryIds.isEmpty() } || expandedCategories[null] == true)
+
+                    Box(modifier = Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.CenterEnd) {
+                        TextButton(onClick = {
+                            val target = !allExpanded
+                            categories.forEach { expandedCategories[it.id] = target }
+                            expandedCategories[null] = target
+                        }) {
+                            Text(if (allExpanded) "Hide All" else "Show All")
+                        }
+                    }
+                }
+
                 categories.forEach { category ->
                     item(key = "header_${category.id}") {
                         CategoryHeader(
                             name = category.name,
+                            isExpanded = expandedCategories[category.id] ?: false,
+                            onToggle = {
+                                expandedCategories[category.id] = !(expandedCategories[category.id] ?: false)
+                            },
                             onAddItem = {
                                 initialCategoryIdsForAdd = listOf(category.id)
                                 showAddItemDialog = true
@@ -149,16 +154,18 @@ fun MainScreen(
                             onStartShopping = { onStartShopping(category.id) }
                         )
                     }
-                    val categoryItems = items.filter { it.categoryIds.contains(category.id) }
-                    items(categoryItems, key = { "cat_${category.id}_item_${it.item.id}" }) { itemWithIds ->
-                        ShoppingItemRow(
-                            item = itemWithIds.item,
-                            onToggle = { viewModel.toggleItem(itemWithIds.item) },
-                            onLongPress = {
-                                selectedItemForAction = itemWithIds.item
-                                showItemActionDialog = true
-                            }
-                        )
+                    if (expandedCategories[category.id] == true) {
+                        val categoryItems = items.filter { it.categoryIds.contains(category.id) }
+                        items(categoryItems, key = { "cat_${category.id}_item_${it.item.id}" }) { itemWithIds ->
+                            ShoppingItemRow(
+                                item = itemWithIds.item,
+                                onToggle = { viewModel.toggleItem(itemWithIds.item) },
+                                onLongPress = {
+                                    selectedItemForAction = itemWithIds.item
+                                    showItemActionDialog = true
+                                }
+                            )
+                        }
                     }
                 }
 
@@ -167,6 +174,10 @@ fun MainScreen(
                     item(key = "header_uncategorized") {
                         CategoryHeader(
                             name = "Uncategorized",
+                            isExpanded = expandedCategories[null] ?: false,
+                            onToggle = {
+                                expandedCategories[null] = !(expandedCategories[null] ?: false)
+                            },
                             onAddItem = {
                                 initialCategoryIdsForAdd = emptyList()
                                 showAddItemDialog = true
@@ -174,15 +185,17 @@ fun MainScreen(
                             onStartShopping = { onStartShopping(null) }
                         )
                     }
-                    items(uncategorized, key = { "uncat_item_${it.item.id}" }) { itemWithIds ->
-                        ShoppingItemRow(
-                            item = itemWithIds.item,
-                            onToggle = { viewModel.toggleItem(itemWithIds.item) },
-                            onLongPress = {
-                                selectedItemForAction = itemWithIds.item
-                                showItemActionDialog = true
-                            }
-                        )
+                    if (expandedCategories[null] == true) {
+                        items(uncategorized, key = { "uncat_item_${it.item.id}" }) { itemWithIds ->
+                            ShoppingItemRow(
+                                item = itemWithIds.item,
+                                onToggle = { viewModel.toggleItem(itemWithIds.item) },
+                                onLongPress = {
+                                    selectedItemForAction = itemWithIds.item
+                                    showItemActionDialog = true
+                                }
+                            )
+                        }
                     }
                 }
 
@@ -312,26 +325,38 @@ fun MainScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CategoryHeader(
     name: String,
+    isExpanded: Boolean,
+    onToggle: () -> Unit,
     onAddItem: () -> Unit,
     onStartShopping: () -> Unit
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().combinedClickable(
+            onClick = onToggle,
+            onLongClick = null
+        )
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                text = name,
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.weight(1f)
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                Icon(
+                    imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
             Row {
                 IconButton(onClick = onAddItem, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Default.Add, contentDescription = "Add to this category", tint = MaterialTheme.colorScheme.primary)
