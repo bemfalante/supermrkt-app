@@ -14,6 +14,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -58,6 +59,7 @@ fun ShoppingScreen(
     var showPriceHistoryDialog by remember { mutableStateOf<String?>(null) }
     var showPaymentPrompt by remember { mutableStateOf(false) }
     var showCancelConfirmDialog by remember { mutableStateOf(false) }
+    var showRenameCategoryDialog by remember { mutableStateOf(false) }
 
     var finishing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -79,47 +81,62 @@ fun ShoppingScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = "R$ ${String.format(ptBr, "%.2f", totalPrice)}",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                },
-                actions = {
-                    Button(
-                        onClick = { showCancelConfirmDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
-                        shape = RoundedCornerShape(4.dp),
-                        modifier = Modifier.scale(0.825f),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        enabled = !finishing
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Cancel", color = Color.White)
-                    }
-
-                    Spacer(modifier = Modifier.width(4.dp))
-
-                    Button(
-                        onClick = {
-                            if (!finishing) {
-                                if (totalPrice > 0) {
-                                    showPaymentPrompt = true
-                                } else {
-                                    finishing = true
-                                    scope.launch {
-                                        viewModel.finishShopping("NONE")
-                                        onFinished()
-                                    }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "R$ ${String.format(ptBr, "%.2f", totalPrice)}",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            if (categoryId != null) {
+                                IconButton(onClick = { showRenameCategoryDialog = true }, modifier = Modifier.size(24.dp)) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Rename Category",
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                                    )
                                 }
                             }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF5DF4D)),
-                        shape = RoundedCornerShape(4.dp),
-                        modifier = Modifier.scale(0.77f),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        enabled = !finishing
-                    ) {
-                        Text("Finish Shopping!", color = Color.Black)
+                        }
+
+                        Button(
+                            onClick = { showCancelConfirmDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                            shape = RoundedCornerShape(4.dp),
+                            modifier = Modifier.scale(0.5775f), // 70% of 0.825f
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            enabled = !finishing
+                        ) {
+                            Text("Cancel", color = Color.White)
+                        }
+
+                        Button(
+                            onClick = {
+                                if (!finishing) {
+                                    if (totalPrice > 0) {
+                                        showPaymentPrompt = true
+                                    } else {
+                                        finishing = true
+                                        scope.launch {
+                                            viewModel.finishShopping("NONE")
+                                            onFinished()
+                                        }
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF5DF4D)),
+                            shape = RoundedCornerShape(4.dp),
+                            modifier = Modifier.scale(0.77f),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            enabled = !finishing
+                        ) {
+                            Text("Finish Shopping!", color = Color.Black)
+                        }
                     }
                 }
             )
@@ -395,6 +412,45 @@ fun ShoppingScreen(
                 viewModel = viewModel,
                 onDismiss = { showPriceHistoryDialog = null }
             )
+        }
+
+        if (showRenameCategoryDialog && categoryId != null) {
+            val categories by viewModel.categories.collectAsState()
+            val currentCategory = categories.find { it.id == categoryId }
+            var newName by remember { mutableStateOf(currentCategory?.name ?: "") }
+            val focusRequester = remember { FocusRequester() }
+
+            AlertDialog(
+                onDismissRequest = { showRenameCategoryDialog = false },
+                title = { Text("Rename Category") },
+                text = {
+                    TextField(
+                        value = newName,
+                        onValueChange = { newName = it },
+                        label = { Text("New Category Name") },
+                        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (newName.isNotBlank()) {
+                            viewModel.renameCategory(categoryId, newName)
+                            showRenameCategoryDialog = false
+                        }
+                    }) {
+                        Text("Rename")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showRenameCategoryDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+            LaunchedEffect(Unit) {
+                delay(100)
+                focusRequester.requestFocus()
+            }
         }
 
         if (showCancelConfirmDialog) {

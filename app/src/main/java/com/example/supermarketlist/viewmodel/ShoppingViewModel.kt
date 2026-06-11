@@ -150,6 +150,18 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun renameCategory(categoryId: Long, newName: String) {
+        viewModelScope.launch {
+            val trimmedName = newName.trim()
+            if (trimmedName.isNotBlank()) {
+                val category = categories.value.find { it.id == categoryId }
+                if (category != null) {
+                    dao.updateCategory(category.copy(name = trimmedName))
+                }
+            }
+        }
+    }
+
     fun updateCategoryOrder(orderedCategories: List<Category>) {
         viewModelScope.launch {
             orderedCategories.forEachIndexed { index, category ->
