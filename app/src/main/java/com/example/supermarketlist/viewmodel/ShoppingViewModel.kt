@@ -150,14 +150,26 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun renameCategory(categoryId: Long, newName: String) {
+    fun branchCategory(oldCategoryId: Long, newName: String) {
         viewModelScope.launch {
             val trimmedName = newName.trim()
             if (trimmedName.isNotBlank()) {
-                val category = categories.value.find { it.id == categoryId }
-                if (category != null) {
-                    dao.updateCategory(category.copy(name = trimmedName))
+                // 1. Create the new category
+                val newCategoryId = dao.insertCategory(Category(name = trimmedName, displayOrder = categories.value.size))
+
+                // 2. Get items currently in this shopping session
+                val activeItems = activeShoppingItems.value
+
+                // 3. Associate these items with the new category
+                activeItems.forEach { active ->
+                    dao.insertItemCategoryCrossRef(ItemCategoryCrossRef(itemId = active.itemId, categoryId = newCategoryId))
                 }
+
+                // 4. Update the active session to point to the new category
+                dao.setActiveSession(ActiveShoppingSession(categoryId = newCategoryId))
+
+                // 5. Update local state
+                _activeSession.value = ActiveShoppingSession(categoryId = newCategoryId)
             }
         }
     }

@@ -422,23 +422,27 @@ fun ShoppingScreen(
 
             AlertDialog(
                 onDismissRequest = { showRenameCategoryDialog = false },
-                title = { Text("Rename Category") },
+                title = { Text("Set Category for this Session") },
                 text = {
-                    TextField(
-                        value = newName,
-                        onValueChange = { newName = it },
-                        label = { Text("New Category Name") },
-                        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
-                    )
+                    Column {
+                        Text("This will create a new category and keep the original one intact.", style = MaterialTheme.typography.bodySmall)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        TextField(
+                            value = newName,
+                            onValueChange = { newName = it },
+                            label = { Text("Category Name") },
+                            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
+                        )
+                    }
                 },
                 confirmButton = {
                     TextButton(onClick = {
                         if (newName.isNotBlank()) {
-                            viewModel.renameCategory(categoryId, newName)
+                            viewModel.branchCategory(categoryId, newName)
                             showRenameCategoryDialog = false
                         }
                     }) {
-                        Text("Rename")
+                        Text("Save as New")
                     }
                 },
                 dismissButton = {
