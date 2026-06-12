@@ -22,9 +22,8 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
     val items: StateFlow<List<ShoppingItemWithCategoryIds>> = dao.getAllItems()
         .flatMapLatest { itemList ->
             val flows = itemList.map { item ->
-                flow {
-                    val catIds = dao.getCategoryIdsForItem(item.id)
-                    emit(ShoppingItemWithCategoryIds(item, catIds))
+                dao.getCategoryIdsForItem(item.id).map { catIds ->
+                    ShoppingItemWithCategoryIds(item, catIds)
                 }
             }
             if (flows.isEmpty()) flowOf(emptyList())
@@ -114,7 +113,7 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
     }
 
     suspend fun getCategoryIdsForItem(itemId: Long): List<Long> {
-        return dao.getCategoryIdsForItem(itemId)
+        return dao.getCategoryIdsForItem(itemId).first()
     }
 
     fun toggleItem(item: ShoppingItem) {

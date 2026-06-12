@@ -58,7 +58,7 @@ interface ShoppingDao {
     suspend fun deleteItemCategoryCrossRefs(itemId: Long)
 
     @Query("SELECT categoryId FROM item_category_cross_ref WHERE itemId = :itemId")
-    suspend fun getCategoryIdsForItem(itemId: Long): List<Long>
+    fun getCategoryIdsForItem(itemId: Long): Flow<List<Long>>
 
     // Shopping Sessions
     @Insert(onConflict = OnConflictStrategy.REPLACE)

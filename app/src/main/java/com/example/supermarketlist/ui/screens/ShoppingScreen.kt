@@ -263,7 +263,7 @@ fun ShoppingScreen(
 
             if (item != null) {
                 var priceInput by remember(itemId) { mutableStateOf(if (activeItem != null && activeItem.price > 0) activeItem.price.toString() else "") }
-                var qtyInputs by remember(itemId) { mutableStateOf(listOf(activeItem?.quantity?.toString() ?: "1")) }
+                var qtyInputs by remember(itemId) { mutableStateOf(listOf("")) }
 
                 AlertDialog(
                     onDismissRequest = { showPriceQtyDialogForItem = null },
@@ -415,9 +415,7 @@ fun ShoppingScreen(
         }
 
         if (showRenameCategoryDialog && categoryId != null) {
-            val categories by viewModel.categories.collectAsState()
-            val currentCategory = categories.find { it.id == categoryId }
-            var newName by remember { mutableStateOf(currentCategory?.name ?: "") }
+            var newName by remember { mutableStateOf("") }
             val focusRequester = remember { FocusRequester() }
 
             AlertDialog(
