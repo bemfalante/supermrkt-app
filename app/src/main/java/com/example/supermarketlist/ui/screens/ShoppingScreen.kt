@@ -301,7 +301,7 @@ fun ShoppingScreen(
                                 Spacer(modifier = Modifier.height(8.dp))
                             }
                             TextButton(onClick = {
-                                qtyInputs = qtyInputs + "1"
+                                qtyInputs = qtyInputs + ""
                             }) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
