@@ -464,8 +464,8 @@ fun AddEditItemDialog(
     onConfirm: (String, List<Long>) -> Unit,
     onAddCategory: (String, (Long) -> Unit) -> Unit
 ) {
-    var name by remember { mutableStateOf(initialName) }
-    var selectedCategoryIds by remember { mutableStateOf(initialCategoryIds) }
+    var name by remember(initialName) { mutableStateOf(initialName) }
+    var selectedCategoryIds by remember(initialCategoryIds) { mutableStateOf(initialCategoryIds) }
     var showNewCategoryDialog by remember { mutableStateOf(false) }
     var newCategoryName by remember { mutableStateOf("") }
 
